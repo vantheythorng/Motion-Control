@@ -16,6 +16,7 @@ This document is the full spec for a native Android app that lets users control 
 | R4 | User chooses which motion triggers which device action (preferences) | Must |
 | R5 | Motion control can be limited to specific apps, with per-app profiles | Optional (Phase 4) |
 | R6 | Setting to toggle the floating bubble on/off | Must (with R3) |
+| R7 | User records their own hand poses and binds them to actions like built-in gestures | Optional (Phase 7) |
 
 Non-goals for v1: iOS, cloud processing, tilt/gyro gestures (require holding the phone).
 
@@ -341,6 +342,38 @@ fun BubbleSettingRow(settings: SettingsRepository) {
 - On foreground package change: find profile whose `packages` contains it → else global profile (if `only_in_selected_apps == false`) → else release camera.
 - App picker lists launchable apps via `<queries>` (below). Do NOT use `QUERY_ALL_PACKAGES`.
 
+### 5.7 Custom poses (Phase 7)
+
+Users record their own static hand shapes (e.g. 🤟, 👌, three fingers up) and use them in profiles like the built-in poses. Everything stays on-device, and only landmark coordinates are stored, never images. Custom *movements* (drawing a circle or a Z) are a later step; see D8.
+
+**Recognition: nearest match on normalized landmarks (no model training).**
+- **Input:** the 21 hand landmarks MediaPipe already returns for each frame.
+- **Normalize each frame** so that only the hand shape matters:
+  - translate so the wrist is the origin
+  - scale by palm length (wrist → middle-finger knuckle)
+  - rotate so wrist → middle knuckle points up
+  - mirror left hands to right
+  - The result is the pose's "fingerprint" vector. Which landmark space to use is D6.
+- **Matching:** each frame's fingerprint is compared with every stored sample (k = 1 nearest neighbour). A custom pose matches when:
+  - its distance is below that pose's threshold, and
+  - it beats the next-best custom pose by a margin.
+- **Thresholds:** derived from the spread of the pose's own samples, with a fixed minimum and maximum.
+- **Engine:** a match feeds `GestureEngine` like a built-in pose. Smoothing, the stable time, "fires once per hold", cooldown, arming and the distance range all apply unchanged. Whether a pose needs a quick stable moment (~0.3 s, like thumbs up) or a 1 s still hold is D7.
+- **Precedence:** a confident custom match beats the built-in classifier's label for that frame. Recording warns when a new pose is too close to a built-in pose or to another custom pose.
+
+**Recording (new "Custom poses" screen, built on Test mode).**
+- Hold the pose in front of the camera. The app captures about 2 s of stable frames: hand in range, still, tracked. That's roughly 20 samples.
+- Repeat once more with the hand at a slightly different angle or distance.
+- A live preview shows the match % against the new pose and the closest existing gesture, before saving.
+- Rename, re-record and delete. Limit about 10 custom poses.
+
+**Data.**
+- `CustomPose(id, name, samples: List<List<Float>>, threshold, version)`, stored as JSON in the same DataStore. Where poses live (shared library or per profile) is D5.
+- **Profile bindings** change from `Map<Motion, DeviceAction>` to string keys:
+  - built-in gestures keep their enum names (`"AIR_SWIPE_UP"`), so existing stored profiles load unchanged
+  - custom poses use `"custom:<id>"`
+- **Deleting a custom pose** removes its bindings from every profile.
+
 ---
 
 ## 6. Manifest
@@ -410,6 +443,7 @@ fun BubbleSettingRow(settings: SettingsRepository) {
 | Profiles | List; create/delete; assign apps |
 | Profile editor | Motion → action dropdowns, sensitivity, cooldown, conflict warnings |
 | Test mode | Camera preview with landmark overlay, recognized gesture + confidence, live dx/dy; no actions fired |
+| Custom poses | Record, preview (live match %), rename, re-record and delete the user's own hand poses (Phase 7, §5.7) |
 | Troubleshooting | Permission status re-check, brand-specific battery/auto-start guides (Oppo, Vivo, Xiaomi, Realme, Samsung; see dontkillmyapp.com) |
 
 ---
@@ -442,6 +476,9 @@ fun BubbleSettingRow(settings: SettingsRepository) {
 | 4 | Foreground-app detection, per-app profiles, default profiles, camera released for unprofiled apps | Camera dot disappears when leaving TikTok for an unprofiled app and returns on re-entry |
 | 5 | Floating bubble, quick panel, `ArmCameraActivity` re-arm, bubble toggle setting | Switch, × target, and notification action all stay in sync; bubble tap re-arms camera after reboot |
 | 6 | ~~Boot receiver,~~ OEM guides, battery tuning, Play disclosures | 30 min continuous use without false triggers, service death, or overheating on at least one Oppo/Vivo/Xiaomi device |
+| 7 | Custom poses (§5.7): recording screen, normalized-landmark matching, string-keyed bindings, custom poses in the profile editor and Test mode | A user records a new pose (e.g. 🤟) in under 30 s, binds it to an action, and it fires in TikTok without restarting motion control; in a 2-minute session of normal hand movement and built-in poses it never fires by mistake; recording warns when the new pose is too similar to an existing one |
+
+Phase 7 doesn't depend on Phases 5–6 and can be built before them.
 
 Build a debug overlay (landmarks + live dx/dy + state machine state) early in Phase 2; threshold tuning is the biggest time sink.
 
@@ -453,6 +490,10 @@ Build a debug overlay (landmarks + live dx/dy + state machine state) early in Ph
 - **D2 — Proximity-sensor wave** as a no-camera fallback mode (cheap, battery-friendly, 1–2 commands). Not in v1 scope; easy add later.
 - **D3 — Head/face gestures** (MediaPipe Face Landmarker: nod, long blink) as an alternate input mode. Post-v1.
 - **D4 — DI framework:** Koin vs Hilt.
+- **D5 — Where custom poses live.** (a) A shared library of poses, with each profile choosing an action per pose. Recommended: record once, use everywhere. (b) Poses owned by one profile.
+- **D6 — Landmark space for custom-pose matching.** (a) Image landmarks (x, y), normalized as in §5.7: simple, but a hand turned towards or away from the camera changes the shape. (b) MediaPipe world landmarks (3D, metres): more robust to hand rotation, slightly noisier. Decide by recording the same poses both ways on device.
+- **D7 — Custom pose trigger.** A quick stable pose (~0.3 s, like thumbs up), or a 1 s still hold (like palm/fist). Possibly a per-pose option. Quick is more responsive; hold has fewer false triggers.
+- **D8 — Custom movements** (paths like a circle or a Z, matched with a $1-style unistroke recognizer). The hard part is knowing when a movement starts and ends: needs a start pose (e.g. point a finger, draw, open the hand) or a pause-move-pause rule. Post-Phase 7.
 
 ---
 
