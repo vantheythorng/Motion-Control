@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">MyGesture</string>
-    <string name="accessibility_service_label">MyGesture motion control</string>
-    <string name="accessibility_description">Lets you control apps hands-free. MyGesture uses this service to perform swipes, taps and back/home actions when you make a hand gesture, and to know which app is open so the right gesture profile is used. It does not read screen content. Camera frames are processed on your device and never stored or uploaded.</string>
+    <string name="app_name">Motion Control</string>
+    <string name="accessibility_service_label">Motion Control</string>
+    <string name="accessibility_description">Lets you control apps hands-free. Motion Control uses this service to perform swipes, taps and back/home actions when you make a hand gesture, and to know which app is open so the right gesture profile is used. It does not read screen content. Camera frames are processed on your device and never stored or uploaded.</string>
 </resources>

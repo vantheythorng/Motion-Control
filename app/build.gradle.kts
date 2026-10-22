@@ -5,13 +5,13 @@ plugins {
 }
 
 android {
-    namespace = "com.kwan.mygesture"
+    namespace = "com.kwan.motioncontrol"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.kwan.mygesture"
+        applicationId = "com.kwan.motioncontrol"
         minSdk = 29
         targetSdk = 36
         versionCode = 1
