@@ -32,6 +32,7 @@ import com.kwan.motioncontrol.data.Motion
 import com.kwan.motioncontrol.data.Profile
 import com.kwan.motioncontrol.data.label
 import com.kwan.motioncontrol.motion.ProfileTuning
+import com.kwan.motioncontrol.system.InstalledApps
 import com.kwan.motioncontrol.ui.common.ChoiceDropdown
 import com.kwan.motioncontrol.ui.common.ScreenHeader
 import java.util.Locale
@@ -42,10 +43,12 @@ import kotlin.math.roundToLong
 @Composable
 fun ProfileEditorScreen(
     profile: Profile?,
-    isActive: Boolean,
+    isDefault: Boolean,
+    installedApps: InstalledApps,
     onBack: () -> Unit,
     onChange: (Profile) -> Unit,
-    onMakeActive: () -> Unit,
+    onAddApps: () -> Unit,
+    onRemoveApp: (String) -> Unit,
     onTest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -62,14 +65,6 @@ fun ProfileEditorScreen(
             return@Column
         }
 
-        if (!isActive) {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Not the active profile, so edits don't affect motion control yet.", Modifier.weight(1f))
-                    TextButton(onClick = onMakeActive) { Text("Make active") }
-                }
-            }
-        }
         ProfileConflicts.check(profile).forEach { warning ->
             Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                 Text(warning, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onErrorContainer)
@@ -88,6 +83,29 @@ fun ProfileEditorScreen(
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
         )
+
+        Text("Apps", style = MaterialTheme.typography.titleMedium)
+        Text(
+            when {
+                isDefault && profile.packages.isEmpty() -> "Used for apps without their own profile, when \"Use in all apps\" is on."
+                isDefault -> "Used in these apps, and for apps without their own profile when \"Use in all apps\" is on."
+                profile.packages.isEmpty() -> "Not used in any app yet."
+                else -> "Motion control uses this profile in:"
+            },
+            style = MaterialTheme.typography.bodySmall,
+        )
+        profile.packages.sortedBy { installedApps.label(it).lowercase() }.forEach { pkg ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                AppIcon(pkg, installedApps)
+                Text(
+                    installedApps.label(pkg) + if (installedApps.isInstalled(pkg)) "" else " (not installed)",
+                    Modifier.weight(1f),
+                )
+                TextButton(onClick = { onRemoveApp(pkg) }) { Text("Remove") }
+            }
+        }
+        OutlinedButton(onClick = onAddApps, modifier = Modifier.fillMaxWidth()) { Text("Add apps") }
+        HorizontalDivider()
 
         Text("Gestures", style = MaterialTheme.typography.titleMedium)
         Motion.entries.forEach { motion ->

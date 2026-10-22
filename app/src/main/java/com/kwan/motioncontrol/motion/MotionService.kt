@@ -26,12 +26,26 @@ import androidx.lifecycle.lifecycleScope
 import com.kwan.motioncontrol.MainActivity
 import com.kwan.motioncontrol.R
 import com.kwan.motioncontrol.accessibility.ActionDispatcher
+import com.kwan.motioncontrol.accessibility.AirScrollAccessibilityService
+import com.kwan.motioncontrol.accessibility.ForegroundAppTracker
+import com.kwan.motioncontrol.data.AppRoute
 import com.kwan.motioncontrol.data.DefaultProfiles
 import com.kwan.motioncontrol.data.DeviceAction
 import com.kwan.motioncontrol.data.Motion
+import com.kwan.motioncontrol.data.Profile
 import com.kwan.motioncontrol.data.ProfileRepository
+import com.kwan.motioncontrol.data.ProfileResolver
+import com.kwan.motioncontrol.data.cameraOffText
+import com.kwan.motioncontrol.system.InstalledApps
 import com.kwan.motioncontrol.motion.camera.HandTracker
 import org.koin.android.ext.android.inject
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
@@ -47,8 +61,13 @@ class MotionService : LifecycleService() {
     private val store: MotionStateStore by inject()
     private val dispatcher: ActionDispatcher by inject()
     private val profiles: ProfileRepository by inject()
-    private var profileName = DefaultProfiles.shortVideo.name
-    private var profileDistance = ProfileTuning.distanceLabel(DefaultProfiles.shortVideo)
+    private val installedApps: InstalledApps by inject()
+
+    /** Inputs of the single camera decision (see [cameraWanted]). */
+    private val running = MutableStateFlow(false)
+    private val screenUsable = MutableStateFlow(false)
+    private var appliedProfile: Profile? = null
+    private var notificationText: String? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var engine: GestureEngine
@@ -65,12 +84,9 @@ class MotionService : LifecycleService() {
 
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
-            when (intent.action) {
-                Intent.ACTION_SCREEN_OFF -> stopCamera()
-                // Resume only once the lock screen is gone, otherwise the camera would run (and
-                // gestures fire) on the keyguard.
-                Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> startCameraIfUsable()
-            }
+            // Usable only once the lock screen is gone, otherwise the camera would run (and
+            // gestures fire) on the keyguard.
+            screenUsable.value = intent.action != Intent.ACTION_SCREEN_OFF && isScreenUsable()
         }
     }
 
@@ -91,6 +107,7 @@ class MotionService : LifecycleService() {
                 store.update { it.copy(error = e.message ?: e.javaClass.simpleName) }
             },
             onDelegateChosen = { d -> store.update { it.copy(delegate = d.name) } },
+            onBound = { store.update { it.copy(cameraActive = true, error = null) } },
         )
         createChannel()
         ContextCompat.registerReceiver(
@@ -103,22 +120,39 @@ class MotionService : LifecycleService() {
             },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
-        // Profile edits apply live, without restarting the service.
+        screenUsable.value = isScreenUsable()
+
+        // The profile follows the open app; edits apply live, without restarting the service.
+        val routes = combine(
+            ForegroundAppTracker.current,
+            AirScrollAccessibilityService.instance.map { it != null },
+            profiles.routing,
+        ) { app, accessibilityOn, routing -> ProfileResolver.resolve(app, accessibilityOn, routing) }
+            .distinctUntilChanged()
+            .stateIn(lifecycleScope, SharingStarted.Eagerly, null)
+        lifecycleScope.launch { routes.filterNotNull().collect(::onRoute) }
+
+        // The one place that turns the camera on and off.
         lifecycleScope.launch {
-            profiles.activeProfile.collect { profile ->
-                engine.applyProfile(profile.bindings, ProfileTuning.configFor(profile))
-                Log.d(TAG, "Profile applied: ${profile.name} ${profile.bindings}, sensitivity ${profile.sensitivity}")
-                profileName = profile.name
-                profileDistance = ProfileTuning.distanceLabel(profile)
-                if (inForeground) refreshNotification()
-            }
+            cameraWanted(
+                running = running,
+                appAllowed = routes.map { it is AppRoute.Use },
+                testModeActive = store.testModeActive,
+                screenUsable = screenUsable,
+            ).collect { wanted -> if (wanted) startCamera() else stopCamera() }
         }
-        // Test mode borrows the front camera; hand it back when test mode ends.
-        lifecycleScope.launch {
-            store.testModeActive.collect { active ->
-                if (active) stopCamera() else startCameraIfUsable()
-            }
+    }
+
+    private fun onRoute(route: AppRoute) {
+        val label = route.app?.let(installedApps::label)
+        if (route is AppRoute.Use && route.profile != appliedProfile) {
+            appliedProfile = route.profile
+            engine.applyProfile(route.profile.bindings, ProfileTuning.configFor(route.profile))
+            Log.d(TAG, "Profile applied: ${route.profile.name} for ${route.app} ${route.profile.bindings}")
         }
+        if (route is AppRoute.Off) Log.d(TAG, "Camera off for ${route.app}: ${route.reason}")
+        store.update { it.copy(route = route, appLabel = label) }
+        if (inForeground) refreshNotification()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -145,6 +179,7 @@ class MotionService : LifecycleService() {
         unregisterReceiver(screenReceiver)
         tracker.close()
         mainHandler.removeCallbacksAndMessages(null)
+        running.value = false
         store.update { MotionState(error = it.error) }
         store.publishDebug(null)
         super.onDestroy()
@@ -172,11 +207,14 @@ class MotionService : LifecycleService() {
         }
         if (inForeground) return
         inForeground = true
-        store.update { MotionState(running = true, delegate = it.delegate) }
-        startCameraIfUsable()
+        store.update {
+            MotionState(running = true, delegate = it.delegate, route = it.route, appLabel = it.appLabel)
+        }
+        running.value = true
     }
 
     private fun stopMotion() {
+        running.value = false
         stopCamera()
         store.update { MotionState() }
         ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
@@ -184,17 +222,20 @@ class MotionService : LifecycleService() {
         stopSelf()
     }
 
-    private fun startCameraIfUsable() {
-        if (!inForeground || tracker.isRunning || store.testModeActive.value) return
-        val interactive = getSystemService(PowerManager::class.java).isInteractive
-        val locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
-        if (!interactive || locked) return
+    private fun isScreenUsable(): Boolean =
+        getSystemService(PowerManager::class.java).isInteractive &&
+            !getSystemService(KeyguardManager::class.java).isKeyguardLocked
+
+    /** Only called by the camera decision. [MotionState.cameraActive] is set once it's bound. */
+    private fun startCamera() {
+        if (tracker.isRunning) return
         tracker.start(this)
-        store.update { it.copy(cameraActive = true, error = null) }
     }
 
     private fun stopCamera() {
         tracker.stop()
+        // A pose held before the camera stopped must not fire when it restarts.
+        engine.reset()
         store.update { it.copy(cameraActive = false) }
         store.publishDebug(null)
     }
@@ -262,9 +303,28 @@ class MotionService : LifecycleService() {
         refreshNotification()
     }
 
+    /** Re-posts the notification only when what it shows changes. */
     private fun refreshNotification() {
+        val paused = store.state.value.paused
+        val text = notificationText(paused)
+        if (text == notificationText) return
         getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, buildNotification(store.state.value.paused))
+            .notify(NOTIFICATION_ID, buildNotification(paused))
+    }
+
+    private fun notificationText(paused: Boolean): String {
+        if (paused) return "Gestures are ignored. Tap Resume to turn them back on."
+        val state = store.state.value
+        return when (val route = state.route) {
+            is AppRoute.Use -> buildString {
+                append(route.profile.name)
+                if (route.viaDefault) append(" (default)")
+                state.appLabel?.let { append(" · ").append(it) }
+                append(". Keep your hand ${ProfileTuning.distanceLabel(route.profile)} from the camera.")
+            }
+            is AppRoute.Off -> cameraOffText(route.reason, state.appLabel)
+            null -> "Starting…"
+        }
     }
 
     private fun createChannel() {
@@ -277,10 +337,7 @@ class MotionService : LifecycleService() {
         NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_motion)
             .setContentTitle(if (paused) "Motion control paused" else "Motion control active")
-            .setContentText(
-                if (paused) "Gestures are ignored. Tap Resume to turn them back on."
-                else "Profile: $profileName. Keep your hand $profileDistance from the camera."
-            )
+            .setContentText(notificationText(paused).also { notificationText = it })
             .setOngoing(true)
             .setSilent(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)

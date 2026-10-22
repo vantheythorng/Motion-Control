@@ -1,5 +1,6 @@
 package com.kwan.motioncontrol.motion
 
+import com.kwan.motioncontrol.data.AppRoute
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -10,8 +11,12 @@ data class MotionState(
     /** MotionService is running in the foreground. */
     val running: Boolean = false,
     val paused: Boolean = false,
-    /** The camera is bound; false while the screen is off or locked. */
+    /** The camera is bound; false while the screen is off or locked, or the app has no profile. */
     val cameraActive: Boolean = false,
+    /** Which profile is used for the last opened app, or why the camera is off. */
+    val route: AppRoute? = null,
+    /** Display name of [AppRoute.app]. */
+    val appLabel: String? = null,
     /** "GPU" or "CPU" once the recognizer is created. */
     val delegate: String? = null,
     val error: String? = null,

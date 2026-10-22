@@ -16,7 +16,8 @@ import kotlinx.serialization.json.jsonArray
 import java.util.UUID
 
 /**
- * Profiles and the active profile id, stored in the app's single Preferences DataStore.
+ * Profiles and the default profile (used for apps without their own profile), stored in the
+ * app's single Preferences DataStore.
  *
  * Reading never writes: until something is saved, the defaults are returned. Entries that can't be
  * decoded (e.g. written by a newer app version) are kept as raw JSON and written back unchanged,
@@ -29,9 +30,18 @@ class ProfileRepository(private val dataStore: DataStore<Preferences>) {
     val profiles: Flow<List<Profile>> =
         dataStore.data.map { decode(it)?.profiles ?: DefaultProfiles.all }.distinctUntilChanged()
 
-    val activeProfile: Flow<Profile> = dataStore.data.map { prefs ->
+    /** Used for apps without their own profile when "Use in all apps" is on. */
+    val defaultProfile: Flow<Profile> = dataStore.data.map { prefs ->
+        defaultOf(decode(prefs)?.profiles ?: DefaultProfiles.all, prefs)
+    }.distinctUntilChanged()
+
+    /**
+     * Everything needed to pick a profile for the open app, read from one DataStore snapshot so a
+     * write never produces a half-updated combination.
+     */
+    val routing: Flow<Routing> = dataStore.data.map { prefs ->
         val list = decode(prefs)?.profiles ?: DefaultProfiles.all
-        list.firstOrNull { it.id == prefs[ACTIVE_PROFILE_ID] } ?: list.first()
+        Routing(list, defaultOf(list, prefs), SettingsRepository.onlyInSelectedApps(prefs))
     }.distinctUntilChanged()
 
     /** Adds [profile] or replaces the one with the same id. */
@@ -45,23 +55,52 @@ class ProfileRepository(private val dataStore: DataStore<Preferences>) {
         if (list.size <= 1 || list.none { it.id == id }) null else list.filterNot { it.id == id }
     }
 
-    /** Saves a copy of [profile] under a new id and returns it. */
+    /**
+     * Saves a copy of [profile] under a new id and returns it. The copy gets no apps: an app
+     * belongs to at most one profile, and a copy claiming the same apps would be silently ignored.
+     */
     suspend fun duplicate(profile: Profile): Profile? {
-        val copy = profile.copy(id = UUID.randomUUID().toString(), name = "${profile.name} copy")
+        val copy = profile.copy(
+            id = UUID.randomUUID().toString(),
+            name = "${profile.name} copy",
+            packages = emptySet(),
+        )
         return copy.takeIf { upsert(it) }
     }
 
-    suspend fun setActive(id: String) {
-        dataStore.edit { it[ACTIVE_PROFILE_ID] = id }
+    /** Adds [packages] to the profile [profileId], moving them out of any other profile. */
+    suspend fun assignApps(profileId: String, packages: Set<String>): Boolean = update { list ->
+        if (list.none { it.id == profileId }) null
+        else list.map {
+            if (it.id == profileId) it.copy(packages = it.packages + packages)
+            else it.copy(packages = it.packages - packages)
+        }
+    }
+
+    suspend fun unassignApp(profileId: String, packageName: String): Boolean = update { list ->
+        list.map { if (it.id == profileId) it.copy(packages = it.packages - packageName) else it }
+    }
+
+    suspend fun setDefault(id: String) {
+        dataStore.edit { it[DEFAULT_PROFILE_ID] = id }
     }
 
     /** Explicit user reset: replaces everything, including entries this version can't read. */
     suspend fun resetToDefaults() {
         dataStore.edit {
             it[PROFILES] = json.encodeToString(ListSerializer(Profile.serializer()), DefaultProfiles.all)
-            it[ACTIVE_PROFILE_ID] = DefaultProfiles.SHORT_VIDEO_ID
+            it[DEFAULT_PROFILE_ID] = DefaultProfiles.GLOBAL_ID
         }
     }
+
+    /**
+     * The chosen default, else the first profile without its own apps (a "global" profile), else
+     * the first profile.
+     */
+    private fun defaultOf(list: List<Profile>, prefs: Preferences): Profile =
+        list.firstOrNull { it.id == (prefs[DEFAULT_PROFILE_ID] ?: DefaultProfiles.GLOBAL_ID) }
+            ?: list.firstOrNull { it.packages.isEmpty() }
+            ?: list.first()
 
     /**
      * Applies [transform] to the stored list (or the defaults if nothing is stored yet). Returns
@@ -99,7 +138,9 @@ class ProfileRepository(private val dataStore: DataStore<Preferences>) {
 
     companion object {
         private val PROFILES = stringPreferencesKey("profiles")
-        private val ACTIVE_PROFILE_ID = stringPreferencesKey("active_profile_id")
+        // Phase 3's "active_profile_id" is no longer read: its fallback (Short video) would have
+        // given every other app tap/double-tap actions.
+        private val DEFAULT_PROFILE_ID = stringPreferencesKey("default_profile_id")
 
         val json = Json {
             ignoreUnknownKeys = true

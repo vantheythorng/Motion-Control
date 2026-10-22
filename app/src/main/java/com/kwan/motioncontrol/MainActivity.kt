@@ -21,6 +21,10 @@ import com.kwan.motioncontrol.accessibility.ActionDispatcher
 import com.kwan.motioncontrol.accessibility.AirScrollAccessibilityService
 import com.kwan.motioncontrol.accessibility.ForegroundAppTracker
 import com.kwan.motioncontrol.data.ProfileRepository
+import com.kwan.motioncontrol.data.ProfileResolver
+import com.kwan.motioncontrol.data.SettingsRepository
+import com.kwan.motioncontrol.system.InstalledApps
+import com.kwan.motioncontrol.ui.profiles.AppPickerScreen
 import com.kwan.motioncontrol.motion.MotionStateStore
 import com.kwan.motioncontrol.ui.home.HomeScreen
 import com.kwan.motioncontrol.ui.profiles.ProfileEditorScreen
@@ -35,6 +39,8 @@ class MainActivity : ComponentActivity() {
     private val dispatcher: ActionDispatcher by inject()
     private val motionStore: MotionStateStore by inject()
     private val profileRepository: ProfileRepository by inject()
+    private val settings: SettingsRepository by inject()
+    private val installedApps: InstalledApps by inject()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -44,6 +50,8 @@ class MainActivity : ComponentActivity() {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     AppContent(
                         repository = profileRepository,
+                        settings = settings,
+                        installedApps = installedApps,
                         store = motionStore,
                         dispatcher = dispatcher,
                         modifier = Modifier.padding(innerPadding),
@@ -58,7 +66,8 @@ private sealed interface Screen {
     data object Home : Screen
     data object Profiles : Screen
     data class ProfileEditor(val profileId: String) : Screen
-    /** Tests [profileId], or the active profile when null. */
+    data class AppPicker(val profileId: String) : Screen
+    /** Tests [profileId], or the default profile when null. */
     data class TestMode(val profileId: String?) : Screen
 }
 
@@ -66,12 +75,14 @@ private fun Screen.encode(): String = when (this) {
     Screen.Home -> "home"
     Screen.Profiles -> "profiles"
     is Screen.ProfileEditor -> "editor:$profileId"
+    is Screen.AppPicker -> "apps:$profileId"
     is Screen.TestMode -> "test:${profileId.orEmpty()}"
 }
 
 private fun decodeScreen(s: String): Screen = when {
     s == "profiles" -> Screen.Profiles
     s.startsWith("editor:") -> Screen.ProfileEditor(s.removePrefix("editor:"))
+    s.startsWith("apps:") -> Screen.AppPicker(s.removePrefix("apps:"))
     s.startsWith("test:") -> Screen.TestMode(s.removePrefix("test:").ifEmpty { null })
     else -> Screen.Home
 }
@@ -84,6 +95,8 @@ private val backStackSaver = Saver<List<Screen>, ArrayList<String>>(
 @Composable
 private fun AppContent(
     repository: ProfileRepository,
+    settings: SettingsRepository,
+    installedApps: InstalledApps,
     store: MotionStateStore,
     dispatcher: ActionDispatcher,
     modifier: Modifier = Modifier,
@@ -99,34 +112,42 @@ private fun AppContent(
 
     val scope = rememberCoroutineScope()
     val profiles by repository.profiles.collectAsStateWithLifecycle(initialValue = emptyList())
-    val activeProfile by repository.activeProfile.collectAsStateWithLifecycle(initialValue = null)
+    val defaultProfile by repository.defaultProfile.collectAsStateWithLifecycle(initialValue = null)
+    val routing by repository.routing.collectAsStateWithLifecycle(initialValue = null)
     val connected by AirScrollAccessibilityService.instance.collectAsStateWithLifecycle()
-    val foregroundApp by ForegroundAppTracker.current.collectAsStateWithLifecycle()
+    val lastApp by ForegroundAppTracker.current.collectAsStateWithLifecycle()
     val motion by store.state.collectAsStateWithLifecycle()
     val debug by store.debug.collectAsStateWithLifecycle()
+    // Same resolution the service uses, so Home is right even while motion control is off.
+    val route = routing?.let { ProfileResolver.resolve(lastApp, connected != null, it) }
 
     when (val screen = backStack.last()) {
         Screen.Home -> HomeScreen(
             accessibilityEnabled = connected != null,
-            foregroundApp = foregroundApp,
+            route = route,
+            appLabel = lastApp?.let(installedApps::label),
             motion = motion,
             debug = debug,
             profiles = profiles,
-            activeProfile = activeProfile,
-            onSelectProfile = { id -> scope.launch { repository.setActive(id) } },
+            defaultProfile = defaultProfile,
+            useInAllApps = routing?.onlyInSelectedApps == false,
+            onUseInAllAppsChange = { all -> scope.launch { settings.setOnlyInSelectedApps(!all) } },
+            onSelectDefault = { id -> scope.launch { repository.setDefault(id) } },
             onEditProfile = { id -> navigate(Screen.ProfileEditor(id)) },
+            onAddAppToProfile = { id, pkg -> scope.launch { repository.assignApps(id, setOf(pkg)) } },
             onOpenProfiles = { navigate(Screen.Profiles) },
             onOpenTestMode = { navigate(Screen.TestMode(null)) },
             modifier = modifier,
         )
         Screen.Profiles -> ProfilesScreen(
             profiles = profiles,
-            activeProfileId = activeProfile?.id,
+            defaultProfileId = defaultProfile?.id,
+            appLabel = installedApps::label,
             onBack = ::back,
             onEdit = { id -> navigate(Screen.ProfileEditor(id)) },
-            onSetActive = { id -> scope.launch { repository.setActive(id) } },
+            onMakeDefault = { id -> scope.launch { repository.setDefault(id) } },
             onNew = {
-                val source = activeProfile ?: return@ProfilesScreen
+                val source = defaultProfile ?: return@ProfilesScreen
                 scope.launch {
                     repository.duplicate(source)?.let { navigate(Screen.ProfileEditor(it.id)) }
                 }
@@ -137,15 +158,26 @@ private fun AppContent(
         )
         is Screen.ProfileEditor -> ProfileEditorScreen(
             profile = profiles.firstOrNull { it.id == screen.profileId },
-            isActive = activeProfile?.id == screen.profileId,
+            isDefault = defaultProfile?.id == screen.profileId,
+            installedApps = installedApps,
             onBack = ::back,
             onChange = { updated -> scope.launch { repository.upsert(updated) } },
-            onMakeActive = { scope.launch { repository.setActive(screen.profileId) } },
+            onAddApps = { navigate(Screen.AppPicker(screen.profileId)) },
+            onRemoveApp = { pkg -> scope.launch { repository.unassignApp(screen.profileId, pkg) } },
             onTest = { navigate(Screen.TestMode(screen.profileId)) },
             modifier = modifier,
         )
+        is Screen.AppPicker -> AppPickerScreen(
+            profile = profiles.firstOrNull { it.id == screen.profileId },
+            profiles = profiles,
+            installedApps = installedApps,
+            onBack = ::back,
+            onAssign = { pkg -> scope.launch { repository.assignApps(screen.profileId, setOf(pkg)) } },
+            onUnassign = { pkg -> scope.launch { repository.unassignApp(screen.profileId, pkg) } },
+            modifier = modifier,
+        )
         is Screen.TestMode -> {
-            val profile = profiles.firstOrNull { it.id == screen.profileId } ?: activeProfile
+            val profile = profiles.firstOrNull { it.id == screen.profileId } ?: defaultProfile
             if (profile != null) {
                 TestModeScreen(
                     profile = profile,

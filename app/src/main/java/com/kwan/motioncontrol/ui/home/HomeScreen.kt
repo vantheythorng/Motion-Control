@@ -9,6 +9,7 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,7 +19,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -36,7 +40,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.kwan.motioncontrol.R
+import com.kwan.motioncontrol.data.AppRoute
 import com.kwan.motioncontrol.data.DefaultProfiles
+import com.kwan.motioncontrol.data.OffReason
+import com.kwan.motioncontrol.data.cameraOffText
 import com.kwan.motioncontrol.data.Profile
 import com.kwan.motioncontrol.data.label
 import com.kwan.motioncontrol.motion.DebugFrame
@@ -49,13 +56,18 @@ import com.kwan.motioncontrol.ui.theme.MotionControlTheme
 @Composable
 fun HomeScreen(
     accessibilityEnabled: Boolean,
-    foregroundApp: String?,
+    /** Which profile the last opened app uses, or why the camera is off there. */
+    route: AppRoute?,
+    appLabel: String?,
     motion: MotionState,
     debug: DebugFrame?,
     profiles: List<Profile>,
-    activeProfile: Profile?,
-    onSelectProfile: (String) -> Unit,
+    defaultProfile: Profile?,
+    useInAllApps: Boolean,
+    onUseInAllAppsChange: (Boolean) -> Unit,
+    onSelectDefault: (String) -> Unit,
     onEditProfile: (String) -> Unit,
+    onAddAppToProfile: (profileId: String, packageName: String) -> Unit,
     onOpenProfiles: () -> Unit,
     onOpenTestMode: () -> Unit,
     modifier: Modifier = Modifier,
@@ -68,11 +80,16 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Motion Assessment", style = MaterialTheme.typography.headlineSmall)
-        AccessibilitySection(accessibilityEnabled, foregroundApp)
+        AccessibilitySection(accessibilityEnabled)
         HorizontalDivider()
-        MotionSection(motion, debug, activeProfile)
+        MotionSection(motion, debug, route, appLabel)
         HorizontalDivider()
-        ProfileSection(profiles, activeProfile, onSelectProfile, onEditProfile, onOpenProfiles)
+        AppProfileSection(route, appLabel, profiles, onEditProfile, onAddAppToProfile)
+        HorizontalDivider()
+        OtherAppsSection(
+            profiles, defaultProfile, useInAllApps, onUseInAllAppsChange, onSelectDefault, onEditProfile,
+            onOpenProfiles,
+        )
         HorizontalDivider()
         OutlinedButton(onClick = onOpenTestMode, modifier = Modifier.fillMaxWidth()) {
             Text("Test mode (camera preview, no actions)")
@@ -81,7 +98,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun AccessibilitySection(enabled: Boolean, foregroundApp: String?) {
+private fun AccessibilitySection(enabled: Boolean) {
     val context = LocalContext.current
     var showDisclosure by remember { mutableStateOf(false) }
 
@@ -89,7 +106,6 @@ private fun AccessibilitySection(enabled: Boolean, foregroundApp: String?) {
         if (enabled) "Accessibility service: enabled" else "Accessibility service: off",
         color = if (enabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
     )
-    Text("Foreground app: ${foregroundApp ?: "unknown"}")
     if (!enabled) {
         Button(onClick = { showDisclosure = true }, modifier = Modifier.fillMaxWidth()) {
             Text("Enable accessibility service")
@@ -124,7 +140,7 @@ private fun Context.hasCameraPermission() =
 
 /** Motion control only ever starts from the Start button here; nothing starts it automatically. */
 @Composable
-private fun MotionSection(motion: MotionState, debug: DebugFrame?, activeProfile: Profile?) {
+private fun MotionSection(motion: MotionState, debug: DebugFrame?, route: AppRoute?, appLabel: String?) {
     val context = LocalContext.current
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -152,9 +168,11 @@ private fun MotionSection(motion: MotionState, debug: DebugFrame?, activeProfile
         when {
             !motion.running -> "Off"
             motion.paused -> "Paused: gestures are ignored. Tap Resume in the notification."
+            route is AppRoute.Off -> cameraOffText(route.reason, appLabel)
             !motion.cameraActive -> "Waiting: camera is off (screen off or locked, or Test mode open)"
-            else -> "Active. Keep your hand " +
-                (activeProfile?.let(ProfileTuning::distanceLabel) ?: "within range") + " from the camera."
+            route is AppRoute.Use -> "Active with ${route.profile.name}. Keep your hand " +
+                ProfileTuning.distanceLabel(route.profile) + " from the camera."
+            else -> "Active"
         },
         color = if (motion.running && !motion.paused) MaterialTheme.colorScheme.primary
         else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -183,35 +201,95 @@ private fun MotionSection(motion: MotionState, debug: DebugFrame?, activeProfile
     }
 }
 
+/** Which profile the last opened app uses, with a shortcut to add an app that has none. */
 @Composable
-private fun ProfileSection(
+private fun AppProfileSection(
+    route: AppRoute?,
+    appLabel: String?,
     profiles: List<Profile>,
-    activeProfile: Profile?,
-    onSelectProfile: (String) -> Unit,
+    onEditProfile: (String) -> Unit,
+    onAddAppToProfile: (profileId: String, packageName: String) -> Unit,
+) {
+    Text("Profile for the last app", style = MaterialTheme.typography.titleMedium)
+    val app = appLabel ?: "this app"
+    when (route) {
+        null -> Text("Loading…", style = MaterialTheme.typography.bodySmall)
+        is AppRoute.Use -> Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                if (route.viaDefault) "$app uses the default profile, ${route.profile.name}."
+                else "$app uses ${route.profile.name}.",
+                Modifier.weight(1f),
+            )
+            TextButton(onClick = { onEditProfile(route.profile.id) }) { Text("Edit") }
+        }
+        is AppRoute.Off -> when (route.reason) {
+            OffReason.ACCESSIBILITY_OFF ->
+                Text("Turn on the accessibility service so motion control knows which app is open.")
+            OffReason.NO_APP_YET -> Text("Open an app to see which profile it uses.")
+            OffReason.NO_PROFILE_FOR_APP -> {
+                Text("$app has no profile, so the camera is off there.")
+                val pkg = route.app
+                if (pkg != null && profiles.isNotEmpty()) {
+                    var expanded by remember { mutableStateOf(false) }
+                    Box {
+                        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text("Add $app to a profile")
+                        }
+                        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            profiles.forEach { profile ->
+                                DropdownMenuItem(
+                                    text = { Text(profile.name) },
+                                    onClick = {
+                                        expanded = false
+                                        onAddAppToProfile(profile.id, pkg)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** What happens in apps without their own profile. */
+@Composable
+private fun OtherAppsSection(
+    profiles: List<Profile>,
+    defaultProfile: Profile?,
+    useInAllApps: Boolean,
+    onUseInAllAppsChange: (Boolean) -> Unit,
+    onSelectDefault: (String) -> Unit,
     onEditProfile: (String) -> Unit,
     onOpenProfiles: () -> Unit,
 ) {
-    Text("Active profile", style = MaterialTheme.typography.titleMedium)
-    if (activeProfile == null || profiles.isEmpty()) {
-        Text("Loading…", style = MaterialTheme.typography.bodySmall)
-        return
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Use in all apps", style = MaterialTheme.typography.titleMedium)
+            Text(
+                if (useInAllApps) "Apps without their own profile use the default profile."
+                else "Off: the camera turns off in apps without their own profile.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(checked = useInAllApps, onCheckedChange = onUseInAllAppsChange)
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-        ChoiceDropdown(
-            selected = activeProfile,
-            options = profiles,
-            optionLabel = { it.name },
-            onSelect = { onSelectProfile(it.id) },
-            modifier = Modifier.weight(1f),
-        )
-        TextButton(onClick = { onEditProfile(activeProfile.id) }) { Text("Edit") }
+    if (useInAllApps && defaultProfile != null && profiles.isNotEmpty()) {
+        Text("Default profile for other apps", style = MaterialTheme.typography.bodyMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            ChoiceDropdown(
+                selected = defaultProfile,
+                options = profiles,
+                optionLabel = { it.name },
+                onSelect = { onSelectDefault(it.id) },
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { onEditProfile(defaultProfile.id) }) { Text("Edit") }
+        }
     }
-    Text(
-        "Changes apply immediately, even while motion control runs.",
-        style = MaterialTheme.typography.bodySmall,
-    )
     OutlinedButton(onClick = onOpenProfiles, modifier = Modifier.fillMaxWidth()) {
-        Text("Manage profiles")
+        Text("Manage profiles and apps")
     }
 }
 
@@ -221,13 +299,17 @@ fun HomeScreenPreview() {
     MotionControlTheme {
         HomeScreen(
             accessibilityEnabled = true,
-            foregroundApp = "com.zhiliaoapp.musically",
+            route = AppRoute.Use(DefaultProfiles.shortVideo, "com.zhiliaoapp.musically", viaDefault = false),
+            appLabel = "TikTok",
             motion = MotionState(running = true, cameraActive = true, delegate = "GPU"),
             debug = null,
             profiles = DefaultProfiles.all,
-            activeProfile = DefaultProfiles.shortVideo,
-            onSelectProfile = {},
+            defaultProfile = DefaultProfiles.global,
+            useInAllApps = false,
+            onUseInAllAppsChange = {},
+            onSelectDefault = {},
             onEditProfile = {},
+            onAddAppToProfile = { _, _ -> },
             onOpenProfiles = {},
             onOpenTestMode = {},
         )

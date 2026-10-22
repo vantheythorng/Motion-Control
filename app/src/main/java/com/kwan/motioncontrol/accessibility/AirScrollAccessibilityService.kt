@@ -17,39 +17,55 @@ import kotlinx.coroutines.flow.asStateFlow
 
 class AirScrollAccessibilityService : AccessibilityService() {
 
-    private var ignoredPackages: Set<String> = emptySet()
-
     override fun onServiceConnected() {
         super.onServiceConnected()
-        // Our own windows, the system UI and keyboards must not change the active app.
-        val imePackages = getSystemService(InputMethodManager::class.java)
-            .enabledInputMethodList.map { it.packageName }
-        ignoredPackages = setOf(packageName, SYSTEM_UI_PACKAGE) + imePackages
         _instance.value = this
         Log.d(TAG, "Accessibility service connected")
     }
 
     // Only clear the reference if it still points at this instance, in case a new instance was
-    // bound before this one is torn down.
+    // bound before this one is torn down. Without the service the open app is unknown, so the
+    // tracker is cleared too (a stale "TikTok" would otherwise keep the camera on).
     override fun onUnbind(intent: Intent?): Boolean {
-        _instance.compareAndSet(this, null)
+        disconnect()
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
-        _instance.compareAndSet(this, null)
+        disconnect()
         super.onDestroy()
+    }
+
+    private fun disconnect() {
+        if (_instance.compareAndSet(this, null)) ForegroundAppTracker.clear()
     }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent) {
         if (e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
+        // Pane appearing/disappearing and title changes come as the same event type but with a
+        // content change type set; only 0 means another window came to the front. Seen on Pixel:
+        // after returning to an app from Recents, the launcher's "Recent apps" pane closing
+        // (PANE_DISAPPEARED) would otherwise make the launcher the open app and turn the camera off.
+        if (e.contentChangeTypes != AccessibilityEvent.CONTENT_CHANGE_TYPE_UNDEFINED) return
         val pkg = e.packageName?.toString() ?: return
-        if (pkg in ignoredPackages) return
+        if (isIgnored(pkg)) return
         if (pkg != ForegroundAppTracker.current.value) Log.d(TAG, "Foreground app: $pkg")
         ForegroundAppTracker.update(pkg)
     }
 
     override fun onInterrupt() {}
+
+    /**
+     * Windows that must not change the open app: our own UI, the system UI, keyboards, and
+     * dialogs drawn over another app. When such a dialog closes, the app underneath sends no new
+     * event, so tracking it would leave the camera off inside e.g. TikTok.
+     */
+    private fun isIgnored(pkg: String): Boolean {
+        if (pkg == packageName || pkg in OVERLAY_PACKAGES) return true
+        // Re-read each time (window changes are infrequent) so a newly installed keyboard counts.
+        return getSystemService(InputMethodManager::class.java)
+            .enabledInputMethodList.any { it.packageName == pkg }
+    }
 
     fun swipe(direction: Direction, durationMs: Long = 250): Boolean {
         val (w, h) = screenSize()
@@ -96,7 +112,13 @@ class AirScrollAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "MotionControl"
-        private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
+        private val OVERLAY_PACKAGES = setOf(
+            "com.android.systemui", // notification shade, Recents on some devices
+            "android", // system dialogs
+            "com.android.intentresolver", // share sheet
+            "com.google.android.permissioncontroller",
+            "com.android.permissioncontroller",
+        )
 
         private val _instance = MutableStateFlow<AirScrollAccessibilityService?>(null)
         /** The connected service, or null when the user hasn't enabled it. */

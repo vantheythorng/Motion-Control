@@ -36,7 +36,7 @@ class ProfileRepositoryTest {
     @Test fun emptyStoreReturnsDefaultsWithoutWriting() = runTest {
         val repo = repository()
         assertEquals(DefaultProfiles.all, repo.profiles.first())
-        assertEquals(DefaultProfiles.SHORT_VIDEO_ID, repo.activeProfile.first().id)
+        assertEquals(DefaultProfiles.GLOBAL_ID, repo.defaultProfile.first().id)
         assertTrue(dataStore.data.first().asMap().isEmpty())
     }
 
@@ -51,10 +51,17 @@ class ProfileRepositoryTest {
         assertEquals(listOf(renamed, DefaultProfiles.global, mine), repo.profiles.first())
     }
 
-    @Test fun setActiveSwitchesTheActiveProfile() = runTest {
+    @Test fun setDefaultSwitchesTheDefaultProfile() = runTest {
         val repo = repository()
-        repo.setActive(DefaultProfiles.GLOBAL_ID)
-        assertEquals(DefaultProfiles.global, repo.activeProfile.first())
+        repo.setDefault(DefaultProfiles.SHORT_VIDEO_ID)
+        assertEquals(DefaultProfiles.shortVideo, repo.defaultProfile.first())
+    }
+
+    @Test fun phase3ActiveProfileKeyIsIgnored() = runTest {
+        // Its Short video fallback would have given every other app tap/double-tap actions.
+        val repo = repository()
+        dataStore.edit { it[stringPreferencesKey("active_profile_id")] = DefaultProfiles.SHORT_VIDEO_ID }
+        assertEquals(DefaultProfiles.global, repo.defaultProfile.first())
     }
 
     @Test fun deletingTheLastProfileIsRefused() = runTest {
@@ -64,19 +71,55 @@ class ProfileRepositoryTest {
         assertEquals(listOf(DefaultProfiles.shortVideo), repo.profiles.first())
     }
 
-    @Test fun activeFallsBackToFirstWhenDeleted() = runTest {
+    @Test fun defaultFallsBackToAProfileWithoutAppsWhenDeleted() = runTest {
         val repo = repository()
-        repo.setActive(DefaultProfiles.GLOBAL_ID)
+        val other = Profile(id = "other", name = "Other")
+        repo.upsert(other)
+        repo.setDefault(DefaultProfiles.GLOBAL_ID)
         repo.delete(DefaultProfiles.GLOBAL_ID)
-        assertEquals(DefaultProfiles.shortVideo, repo.activeProfile.first())
+        // Short video has apps, so the first profile without apps is preferred.
+        assertEquals(other, repo.defaultProfile.first())
     }
 
-    @Test fun duplicateGetsANewId() = runTest {
+    @Test fun duplicateGetsANewIdAndNoApps() = runTest {
         val repo = repository()
         val copy = repo.duplicate(DefaultProfiles.shortVideo)!!
         assertTrue(copy.id != DefaultProfiles.SHORT_VIDEO_ID)
         assertEquals(DefaultProfiles.shortVideo.bindings, copy.bindings)
+        // An app belongs to one profile: the copy must not claim (and be shadowed for) the same apps.
+        assertTrue(copy.packages.isEmpty())
         assertEquals(3, repo.profiles.first().size)
+    }
+
+    @Test fun assignAppsMovesThemFromOtherProfiles() = runTest {
+        val repo = repository()
+        val tiktok = "com.ss.android.ugc.trill"
+        assertTrue(repo.assignApps(DefaultProfiles.GLOBAL_ID, setOf(tiktok, "com.android.chrome")))
+        val byId = repo.profiles.first().associateBy { it.id }
+        assertTrue(tiktok in byId.getValue(DefaultProfiles.GLOBAL_ID).packages)
+        assertTrue(tiktok !in byId.getValue(DefaultProfiles.SHORT_VIDEO_ID).packages)
+        // Every app is in at most one profile.
+        val all = byId.values.flatMap { it.packages }
+        assertEquals(all.size, all.toSet().size)
+    }
+
+    @Test fun assignAppsToAMissingProfileIsRefused() = runTest {
+        val repo = repository()
+        assertFalse(repo.assignApps("nope", setOf("com.android.chrome")))
+    }
+
+    @Test fun unassignAppRemovesOnlyFromThatProfile() = runTest {
+        val repo = repository()
+        repo.unassignApp(DefaultProfiles.SHORT_VIDEO_ID, "com.instagram.android")
+        val shortVideo = repo.profiles.first().first { it.id == DefaultProfiles.SHORT_VIDEO_ID }
+        assertEquals(DefaultProfiles.shortVideo.packages - "com.instagram.android", shortVideo.packages)
+    }
+
+    @Test fun routingReadsProfilesDefaultAndSettingTogether() = runTest {
+        val repo = repository()
+        assertEquals(Routing(DefaultProfiles.all, DefaultProfiles.global, onlyInSelectedApps = true), repo.routing.first())
+        SettingsRepository(dataStore).setOnlyInSelectedApps(false)
+        assertFalse(repo.routing.first().onlyInSelectedApps)
     }
 
     @Test fun unreadableEntriesAreSkippedButKeptOnWrite() = runTest {
@@ -106,7 +149,7 @@ class ProfileRepositoryTest {
         dataStore.edit { it[PROFILES] = "not json" }
         repo.resetToDefaults()
         assertEquals(DefaultProfiles.all, repo.profiles.first())
-        assertEquals(DefaultProfiles.SHORT_VIDEO_ID, repo.activeProfile.first().id)
+        assertEquals(DefaultProfiles.GLOBAL_ID, repo.defaultProfile.first().id)
     }
 
     private companion object {

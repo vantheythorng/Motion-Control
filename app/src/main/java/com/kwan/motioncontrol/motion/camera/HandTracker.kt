@@ -47,6 +47,8 @@ class HandTracker(
     private val onFrame: (HandFrame) -> Unit,
     private val onError: (Throwable) -> Unit,
     private val onDelegateChosen: (Delegate) -> Unit = {},
+    /** Called on the main thread once the camera is actually bound. */
+    private val onBound: () -> Unit = {},
 ) {
     private val analysisExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private var recognizer: GestureRecognizer? = null
@@ -109,6 +111,7 @@ class HandTracker(
                 cameraProvider = provider
                 val camera = provider.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, *useCases)
                 boundUseCases = useCases
+                onBound()
                 focalPerSensorWidth = readFocalPerSensorWidth(camera.cameraInfo)
             } catch (e: Exception) {
                 analysis = null

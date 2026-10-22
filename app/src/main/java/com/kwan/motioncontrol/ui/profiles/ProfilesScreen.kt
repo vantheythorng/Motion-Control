@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.kwan.motioncontrol.data.Profile
 import com.kwan.motioncontrol.ui.common.ScreenHeader
@@ -30,10 +31,11 @@ import com.kwan.motioncontrol.ui.common.ScreenHeader
 @Composable
 fun ProfilesScreen(
     profiles: List<Profile>,
-    activeProfileId: String?,
+    defaultProfileId: String?,
+    appLabel: (String) -> String,
     onBack: () -> Unit,
     onEdit: (String) -> Unit,
-    onSetActive: (String) -> Unit,
+    onMakeDefault: (String) -> Unit,
     onNew: () -> Unit,
     onDelete: (String) -> Unit,
     onResetToDefaults: () -> Unit,
@@ -41,6 +43,15 @@ fun ProfilesScreen(
 ) {
     var deleting by remember { mutableStateOf<Profile?>(null) }
     var confirmReset by remember { mutableStateOf(false) }
+
+    fun appsText(profile: Profile): String {
+        val labels = profile.packages.map(appLabel).sortedBy { it.lowercase() }
+        return when {
+            labels.isEmpty() -> "No apps"
+            labels.size <= 3 -> labels.joinToString(", ")
+            else -> labels.take(3).joinToString(", ") + " +${labels.size - 3} more"
+        }
+    }
 
     Column(
         modifier = modifier
@@ -50,8 +61,13 @@ fun ProfilesScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         ScreenHeader("Profiles", onBack)
+        Text(
+            "Each app uses the profile it's added to. The default profile is used for other apps " +
+                "when \"Use in all apps\" is on.",
+            style = MaterialTheme.typography.bodySmall,
+        )
         profiles.forEach { profile ->
-            val active = profile.id == activeProfileId
+            val isDefault = profile.id == defaultProfileId
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -62,14 +78,20 @@ fun ProfilesScreen(
                 Column(Modifier.weight(1f)) {
                     Text(profile.name, style = MaterialTheme.typography.titleMedium)
                     Text(
-                        if (active) "Active · ${profile.bindings.size} gestures"
-                        else "${profile.bindings.size} gestures",
+                        appsText(profile),
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (active) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                    if (isDefault) {
+                        Text(
+                            "Default for other apps",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                 }
-                if (!active) TextButton(onClick = { onSetActive(profile.id) }) { Text("Use") }
+                if (!isDefault) TextButton(onClick = { onMakeDefault(profile.id) }) { Text("Make default") }
                 TextButton(
                     onClick = { deleting = profile },
                     enabled = profiles.size > 1,
@@ -78,7 +100,7 @@ fun ProfilesScreen(
             HorizontalDivider()
         }
         Button(onClick = onNew, modifier = Modifier.fillMaxWidth()) {
-            Text("New profile (copy of the active one)")
+            Text("New profile (copy of the default, no apps)")
         }
         OutlinedButton(onClick = { confirmReset = true }, modifier = Modifier.fillMaxWidth()) {
             Text("Reset to defaults")
@@ -89,7 +111,13 @@ fun ProfilesScreen(
         AlertDialog(
             onDismissRequest = { deleting = null },
             title = { Text("Delete \"${profile.name}\"?") },
-            text = { Text("This can't be undone.") },
+            text = {
+                Text(
+                    if (profile.packages.isEmpty()) "This can't be undone."
+                    else "Motion control will stop working in ${appsText(profile)} unless you add " +
+                        "them to another profile. This can't be undone."
+                )
+            },
             confirmButton = {
                 TextButton(onClick = {
                     deleting = null

@@ -179,6 +179,17 @@ class GestureEngineTest {
         assertEquals(listOf(Motion.AIR_SWIPE_UP), fired)
     }
 
+    @Test fun resetForgetsAPoseHeldBeforeTheCameraStopped() {
+        // Fist held, then the camera stops (left the app) before the hold completes.
+        holdStill("Closed_Fist", 800)
+        engine.reset()
+        // Back in the app with the fist still up: the hold starts over instead of firing at once.
+        holdStill("Closed_Fist", 600)
+        assertEquals(emptyList<Motion>(), fired)
+        holdStill("Closed_Fist", 600)
+        assertEquals(listOf(Motion.FIST_HOLD), fired)
+    }
+
     @Test fun holdNeedsAFullSecond() {
         holdStill("Closed_Fist", 800)
         assertEquals(emptyList<Motion>(), fired)

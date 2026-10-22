@@ -7,6 +7,8 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.kwan.motioncontrol.accessibility.ActionDispatcher
 import com.kwan.motioncontrol.data.ProfileRepository
+import com.kwan.motioncontrol.data.SettingsRepository
+import com.kwan.motioncontrol.system.InstalledApps
 import com.kwan.motioncontrol.motion.MotionStateStore
 import org.koin.android.ext.koin.androidContext
 import org.koin.core.context.startKoin
@@ -33,4 +35,6 @@ val appModule = module {
         )
     }
     single { ProfileRepository(get()) }
+    single { SettingsRepository(get()) }
+    single { InstalledApps(androidContext()) }
 }

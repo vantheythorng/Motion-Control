@@ -90,12 +90,27 @@ class GestureEngine(
     private var lastFireAt = 0L
     private var lastMotion: Motion? = null
 
+    @Volatile private var resetRequested = false
+
+    /**
+     * Forgets the current hand and pose (call when the camera stops), so a pose held before
+     * leaving an app can't fire on re-entry. Applied on the frame thread at the next frame.
+     */
+    fun reset() {
+        resetRequested = true
+    }
+
     /** Switches to a new profile's bindings and tuning without resetting the gesture state. */
     fun applyProfile(bindings: Map<Motion, DeviceAction>, config: Config) {
         tuning = Tuning(bindings.withoutNone(), config)
     }
 
     fun onFrame(frame: HandFrame): Snapshot {
+        if (resetRequested) {
+            resetRequested = false
+            onHandLost()
+            state = State.IDLE
+        }
         val current = tuning
         bindings = current.bindings
         config = current.config
