@@ -7,10 +7,10 @@ enum class Motion {
 
 val Motion.label: String
     get() = when (this) {
-        Motion.AIR_SWIPE_UP -> "Air swipe up"
-        Motion.AIR_SWIPE_DOWN -> "Air swipe down"
-        Motion.AIR_SWIPE_LEFT -> "Air swipe left"
-        Motion.AIR_SWIPE_RIGHT -> "Air swipe right"
+        Motion.AIR_SWIPE_UP -> "Swipe Up"
+        Motion.AIR_SWIPE_DOWN -> "Swipe Down"
+        Motion.AIR_SWIPE_LEFT -> "Swipe Left"
+        Motion.AIR_SWIPE_RIGHT -> "Swipe Right"
         Motion.OPEN_PALM_HOLD -> "Open palm (hold)"
         Motion.THUMBS_UP -> "Thumbs up"
         Motion.THUMBS_DOWN -> "Thumbs down"
