@@ -6,9 +6,7 @@ plugins {
 android {
     namespace = "com.kwan.mygesture"
     compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
+        version = release(37)
     }
 
     defaultConfig {
@@ -37,6 +35,10 @@ android {
     buildFeatures {
         compose = true
     }
+    androidResources {
+        // MediaPipe model bundles are memory-mapped; keep them uncompressed in the APK.
+        noCompress += "task"
+    }
 }
 
 dependencies {
@@ -48,6 +50,13 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.service)
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.mediapipe.tasks.vision)
+    implementation(platform(libs.koin.bom))
+    implementation(libs.koin.android)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
