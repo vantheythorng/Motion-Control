@@ -3,15 +3,11 @@ package com.kwan.motioncontrol.ui.testmode
 import android.Manifest
 import android.accessibilityservice.AccessibilityService
 import android.content.pm.PackageManager
-import android.view.ViewGroup
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -34,7 +30,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -118,20 +113,9 @@ fun TestModeScreen(
     }
     DisposableEffect(Unit) { onDispose { tracker.close() } }
 
-    val previewView = remember {
-        PreviewView(context).apply {
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
-            )
-            scaleType = PreviewView.ScaleType.FIT_CENTER
-            // TextureView-based, so the Compose overlay draws on top reliably.
-            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
-        }
-    }
-
     LifecycleStartEffect(hasCamera) {
         store.setTestModeActive(true)
-        if (hasCamera) tracker.start(lifecycleOwner, previewView.surfaceProvider)
+        if (hasCamera) tracker.start(lifecycleOwner)
         onStopOrDispose {
             tracker.stop()
             frames.value = null
@@ -163,12 +147,8 @@ fun TestModeScreen(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            // The analysis frames are 3:4 portrait; the preview uses the same aspect ratio and the
-            // front preview is mirrored like the landmarks, so the overlay lines up.
-            Box(Modifier.width(180.dp).aspectRatio(3f / 4f)) {
-                AndroidView(factory = { previewView }, modifier = Modifier.fillMaxSize())
-                LandmarkView(debug?.landmarks, Modifier.fillMaxSize(), transparent = true)
-            }
+            // Only the tracked hand is drawn, never the camera image.
+            LandmarkView(debug?.landmarks, Modifier.width(180.dp))
             DebugReadout(debug, delegateName)
         }
         Text(

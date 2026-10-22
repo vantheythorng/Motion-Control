@@ -92,7 +92,7 @@ fun HomeScreen(
         )
         HorizontalDivider()
         OutlinedButton(onClick = onOpenTestMode, modifier = Modifier.fillMaxWidth()) {
-            Text("Test mode (camera preview, no actions)")
+            Text("Test mode (live hand view, no actions)")
         }
     }
 }

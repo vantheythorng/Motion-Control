@@ -14,9 +14,7 @@ import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
-import androidx.camera.core.Preview
 import androidx.camera.core.UseCase
-import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -65,11 +63,8 @@ class HandTracker(
 
     val isRunning: Boolean get() = analysis != null
 
-    /**
-     * Binds the camera to [owner], plus a 4:3 [Preview] (matching the analysis frames) when
-     * [previewSurfaceProvider] is given. Safe to call repeatedly. Main thread only.
-     */
-    fun start(owner: LifecycleOwner, previewSurfaceProvider: Preview.SurfaceProvider? = null) {
+    /** Binds the camera to [owner]. Safe to call repeatedly. Main thread only. */
+    fun start(owner: LifecycleOwner) {
         if (analysis != null) return
         lastHandAt = SystemClock.uptimeMillis()
         analysisExecutor.execute { ensureRecognizer() }
@@ -90,17 +85,7 @@ class HandTracker(
             .build()
             .also { it.setAnalyzer(analysisExecutor, ::analyze) }
         analysis = useCase
-        val preview = previewSurfaceProvider?.let { provider ->
-            Preview.Builder()
-                .setResolutionSelector(
-                    ResolutionSelector.Builder()
-                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
-                        .build()
-                )
-                .build()
-                .also { it.setSurfaceProvider(provider) }
-        }
-        val useCases = listOfNotNull<UseCase>(useCase, preview).toTypedArray()
+        val useCases = arrayOf<UseCase>(useCase)
 
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
