@@ -161,6 +161,17 @@ class GestureEngineTest {
         assertEquals(listOf(Motion.AIR_SWIPE_UP, Motion.AIR_SWIPE_UP), fired)
     }
 
+    @Test fun profileCanWidenTheDistanceRange() {
+        distanceCm = 150f // ignored with the default 30 cm – 1 m
+        engine.applyProfile(
+            DefaultProfiles.shortVideo.bindings,
+            ProfileTuning.configFor(DefaultProfiles.shortVideo.copy(maxDistanceCm = 200f)),
+        )
+        holdStill("None", 200)
+        moveVertically(0.8f, 0.3f)
+        assertEquals(listOf(Motion.AIR_SWIPE_UP), fired)
+    }
+
     @Test fun unknownDistanceIsAllowed() {
         distanceCm = null
         holdStill("None", 200)

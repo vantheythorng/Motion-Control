@@ -37,6 +37,13 @@ class ProfileSerializationTest {
         assertEquals(mapOf(Motion.AIR_SWIPE_UP to DeviceAction.TapCenter), profile.bindings)
     }
 
+    @Test fun profilesSavedBeforeDistanceSettingsGetTheDefaults() {
+        val stored = """{"id":"old","name":"Old","bindings":{},"sensitivity":0.5,"cooldownMs":800,"version":1}"""
+        val profile = json.decodeFromString(Profile.serializer(), stored)
+        assertEquals(Profile.DEFAULT_MIN_DISTANCE_CM, profile.minDistanceCm)
+        assertEquals(Profile.DEFAULT_MAX_DISTANCE_CM, profile.maxDistanceCm)
+    }
+
     @Test fun choosingNoneRemovesTheBinding() {
         val profile = DefaultProfiles.shortVideo.withBinding(Motion.AIR_SWIPE_UP, DeviceAction.None)
         assertTrue(Motion.AIR_SWIPE_UP !in profile.bindings)

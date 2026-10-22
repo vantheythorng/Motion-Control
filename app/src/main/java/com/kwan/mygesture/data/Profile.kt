@@ -13,6 +13,12 @@ data class Profile(
     /** 0..1; higher = smaller motions and lower confidence are accepted. See ProfileTuning. */
     val sensitivity: Float = 0.5f,
     val cooldownMs: Long = 800,
+    /**
+     * Working distance: hands closer or farther than this are ignored (e.g. people behind you).
+     * Profiles saved before this existed get the defaults.
+     */
+    val minDistanceCm: Float = DEFAULT_MIN_DISTANCE_CM,
+    val maxDistanceCm: Float = DEFAULT_MAX_DISTANCE_CM,
     /** Schema version of this stored entry, for future migrations. */
     val version: Int = 1,
 ) {
@@ -20,6 +26,16 @@ data class Profile(
     fun withBinding(motion: Motion, action: DeviceAction): Profile = copy(
         bindings = if (action == DeviceAction.None) bindings - motion else bindings + (motion to action),
     )
+
+    companion object {
+        const val DEFAULT_MIN_DISTANCE_CM = 30f
+        const val DEFAULT_MAX_DISTANCE_CM = 100f
+        /** Limits offered in the editor: tracking is unreliable outside roughly this range. */
+        const val DISTANCE_LIMIT_MIN_CM = 10f
+        const val DISTANCE_LIMIT_MAX_CM = 200f
+        /** Keeps the range from collapsing to nothing. */
+        const val MIN_DISTANCE_SPAN_CM = 10f
+    }
 }
 
 object DefaultProfiles {

@@ -42,6 +42,7 @@ import com.kwan.mygesture.data.label
 import com.kwan.mygesture.motion.DebugFrame
 import com.kwan.mygesture.motion.MotionService
 import com.kwan.mygesture.motion.MotionState
+import com.kwan.mygesture.motion.ProfileTuning
 import com.kwan.mygesture.ui.common.ChoiceDropdown
 import com.kwan.mygesture.ui.theme.MyGestureTheme
 
@@ -69,7 +70,7 @@ fun HomeScreen(
         Text("Motion Assessment", style = MaterialTheme.typography.headlineSmall)
         AccessibilitySection(accessibilityEnabled, foregroundApp)
         HorizontalDivider()
-        MotionSection(motion, debug)
+        MotionSection(motion, debug, activeProfile)
         HorizontalDivider()
         ProfileSection(profiles, activeProfile, onSelectProfile, onEditProfile, onOpenProfiles)
         HorizontalDivider()
@@ -123,7 +124,7 @@ private fun Context.hasCameraPermission() =
 
 /** Motion control only ever starts from the Start button here; nothing starts it automatically. */
 @Composable
-private fun MotionSection(motion: MotionState, debug: DebugFrame?) {
+private fun MotionSection(motion: MotionState, debug: DebugFrame?, activeProfile: Profile?) {
     val context = LocalContext.current
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -152,7 +153,8 @@ private fun MotionSection(motion: MotionState, debug: DebugFrame?) {
             !motion.running -> "Off"
             motion.paused -> "Paused: gestures are ignored. Tap Resume in the notification."
             !motion.cameraActive -> "Waiting: camera is off (screen off or locked, or Test mode open)"
-            else -> "Active. Keep your hand 30 cm–1 m from the camera."
+            else -> "Active. Keep your hand " +
+                (activeProfile?.let(ProfileTuning::distanceLabel) ?: "within range") + " from the camera."
         },
         color = if (motion.running && !motion.paused) MaterialTheme.colorScheme.primary
         else MaterialTheme.colorScheme.onSurfaceVariant,

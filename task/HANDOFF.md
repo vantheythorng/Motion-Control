@@ -462,5 +462,5 @@ Build a debug overlay (landmarks + live dx/dy + state machine state) early in Ph
 - **D1 (bubble):** hosted in `AirScrollAccessibilityService` as `TYPE_ACCESSIBILITY_OVERLAY`; no `SYSTEM_ALERT_WINDOW`.
 - **D4 (DI):** Koin.
 - **Default bindings:** FIST_HOLD → TapCenter (play/pause), not TogglePause. A gesture that pauses gestures blocked every other gesture; pausing is done from the notification. TogglePause stays available in the profile editor, with a warning.
-- **Working range:** hands are only accepted 30 cm – 1 m from the camera (estimated from MediaPipe world landmarks and the camera focal length).
+- **Working range:** hands are only accepted within a distance range set per profile in the editor (default 30 cm – 1 m, adjustable 10 cm – 2 m), estimated from MediaPipe world landmarks and the camera focal length.
 - **Active profile (Phase 3):** chosen on the Home screen until Phase 4 adds per-app switching.

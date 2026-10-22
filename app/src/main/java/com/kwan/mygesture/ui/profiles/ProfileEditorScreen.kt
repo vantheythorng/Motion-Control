@@ -14,6 +14,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RangeSlider
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,6 +31,7 @@ import com.kwan.mygesture.data.DeviceAction
 import com.kwan.mygesture.data.Motion
 import com.kwan.mygesture.data.Profile
 import com.kwan.mygesture.data.label
+import com.kwan.mygesture.motion.ProfileTuning
 import com.kwan.mygesture.ui.common.ChoiceDropdown
 import com.kwan.mygesture.ui.common.ScreenHeader
 import java.util.Locale
@@ -131,6 +133,37 @@ fun ProfileEditorScreen(
             onValueChangeFinished = { onChange(profile.copy(cooldownMs = cooldown.roundToLong())) },
             valueRange = 300f..2000f,
             steps = 16,
+        )
+
+        val (savedMin, savedMax) = ProfileTuning.distanceRange(profile)
+        var minCm by rememberSaveable(profile.id) { mutableFloatStateOf(savedMin) }
+        var maxCm by rememberSaveable(profile.id) { mutableFloatStateOf(savedMax) }
+        Text(
+            "Hand distance: ${ProfileTuning.distanceLabel(profile.copy(minDistanceCm = minCm, maxDistanceCm = maxCm))}",
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            "Hands closer or farther than this are ignored, e.g. people behind you. The distance is " +
+                "estimated from the size of your hand, so it can be off by about 20 %; check it with " +
+                "Test this profile.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        RangeSlider(
+            value = minCm..maxCm,
+            onValueChange = { range ->
+                // 5 cm steps, and never narrower than the minimum span.
+                val lo = (range.start / 5).roundToInt() * 5f
+                val hi = (range.endInclusive / 5).roundToInt() * 5f
+                if (hi - lo >= Profile.MIN_DISTANCE_SPAN_CM) {
+                    minCm = lo
+                    maxCm = hi
+                }
+            },
+            onValueChangeFinished = {
+                onChange(profile.copy(minDistanceCm = minCm, maxDistanceCm = maxCm))
+            },
+            valueRange = Profile.DISTANCE_LIMIT_MIN_CM..Profile.DISTANCE_LIMIT_MAX_CM,
+            steps = ((Profile.DISTANCE_LIMIT_MAX_CM - Profile.DISTANCE_LIMIT_MIN_CM) / 5).toInt() - 1,
         )
 
         OutlinedButton(onClick = onTest, modifier = Modifier.fillMaxWidth()) {

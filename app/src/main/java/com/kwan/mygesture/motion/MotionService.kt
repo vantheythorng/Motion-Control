@@ -48,6 +48,7 @@ class MotionService : LifecycleService() {
     private val dispatcher: ActionDispatcher by inject()
     private val profiles: ProfileRepository by inject()
     private var profileName = DefaultProfiles.shortVideo.name
+    private var profileDistance = ProfileTuning.distanceLabel(DefaultProfiles.shortVideo)
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var engine: GestureEngine
@@ -108,6 +109,7 @@ class MotionService : LifecycleService() {
                 engine.applyProfile(profile.bindings, ProfileTuning.configFor(profile))
                 Log.d(TAG, "Profile applied: ${profile.name} ${profile.bindings}, sensitivity ${profile.sensitivity}")
                 profileName = profile.name
+                profileDistance = ProfileTuning.distanceLabel(profile)
                 if (inForeground) refreshNotification()
             }
         }
@@ -277,7 +279,7 @@ class MotionService : LifecycleService() {
             .setContentTitle(if (paused) "Motion control paused" else "Motion control active")
             .setContentText(
                 if (paused) "Gestures are ignored. Tap Resume to turn them back on."
-                else "Profile: $profileName. Keep your hand 30 cm–1 m from the camera."
+                else "Profile: $profileName. Keep your hand $profileDistance from the camera."
             )
             .setOngoing(true)
             .setSilent(true)

@@ -33,7 +33,7 @@ class GestureEngine(
         /** Tracking dropouts shorter than this (e.g. motion blur mid-swipe) are ignored. */
         val handLostMs: Long = 400,
         val cooldownMs: Long = 800,
-        /** Working range: hands closer or farther than this are ignored (e.g. people behind you). */
+        /** Working range: hands closer or farther than this are ignored (set per profile). */
         val minDistanceCm: Float = 30f,
         val maxDistanceCm: Float = 100f,
         /** A fired pose must be gone this long before it can fire again; single-frame
