@@ -1,7 +1,6 @@
 package com.kwan.mygesture.ui.home
 
 import android.Manifest
-import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -15,7 +14,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -26,12 +24,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -39,16 +36,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.kwan.mygesture.R
-import com.kwan.mygesture.data.DeviceAction
-import com.kwan.mygesture.data.Direction
+import com.kwan.mygesture.data.DefaultProfiles
+import com.kwan.mygesture.data.Profile
+import com.kwan.mygesture.data.label
 import com.kwan.mygesture.motion.DebugFrame
 import com.kwan.mygesture.motion.MotionService
 import com.kwan.mygesture.motion.MotionState
+import com.kwan.mygesture.ui.common.ChoiceDropdown
 import com.kwan.mygesture.ui.theme.MyGestureTheme
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import java.util.Locale
 
 @Composable
 fun HomeScreen(
@@ -56,9 +51,12 @@ fun HomeScreen(
     foregroundApp: String?,
     motion: MotionState,
     debug: DebugFrame?,
-    startRequested: Boolean,
-    onStartRequestHandled: () -> Unit,
-    onDispatch: (DeviceAction) -> Boolean,
+    profiles: List<Profile>,
+    activeProfile: Profile?,
+    onSelectProfile: (String) -> Unit,
+    onEditProfile: (String) -> Unit,
+    onOpenProfiles: () -> Unit,
+    onOpenTestMode: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -71,10 +69,13 @@ fun HomeScreen(
         Text("Motion Assessment", style = MaterialTheme.typography.headlineSmall)
         AccessibilitySection(accessibilityEnabled, foregroundApp)
         HorizontalDivider()
-        MotionSection(motion, startRequested, onStartRequestHandled)
-        if (motion.running) DebugSection(debug, motion)
+        MotionSection(motion, debug)
         HorizontalDivider()
-        InjectionTestSection(accessibilityEnabled, onDispatch)
+        ProfileSection(profiles, activeProfile, onSelectProfile, onEditProfile, onOpenProfiles)
+        HorizontalDivider()
+        OutlinedButton(onClick = onOpenTestMode, modifier = Modifier.fillMaxWidth()) {
+            Text("Test mode (camera preview, no actions)")
+        }
     }
 }
 
@@ -120,12 +121,9 @@ private val motionPermissions = buildList {
 private fun Context.hasCameraPermission() =
     ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
 
+/** Motion control only ever starts from the Start button here; nothing starts it automatically. */
 @Composable
-private fun MotionSection(
-    motion: MotionState,
-    startRequested: Boolean,
-    onStartRequestHandled: () -> Unit,
-) {
+private fun MotionSection(motion: MotionState, debug: DebugFrame?) {
     val context = LocalContext.current
     var message by remember { mutableStateOf<String?>(null) }
 
@@ -148,27 +146,25 @@ private fun MotionSection(
         else permissionLauncher.launch(motionPermissions)
     }
 
-    // Tapping the "re-arm" notification opens the app with a start request.
-    LaunchedEffect(startRequested) {
-        if (startRequested) {
-            onStartRequestHandled()
-            start()
-        }
-    }
-
     Text("Motion control", style = MaterialTheme.typography.titleMedium)
     Text(
         when {
-            motion.needsReArm && !motion.running -> "Stopped by the system. Tap Start to turn it back on."
             !motion.running -> "Off"
-            motion.paused -> "Paused from the notification: gestures are ignored. Tap Resume there."
-            !motion.cameraActive -> "Waiting: camera is off while the screen is off or locked"
-            else -> "Active. Swipe up/down = next/previous, open palm (1 s) = play/pause video, " +
-                "thumbs up = like, fist (1 s) = play/pause video. Keep your hand 30 cm–1 m from the camera."
+            motion.paused -> "Paused: gestures are ignored. Tap Resume in the notification."
+            !motion.cameraActive -> "Waiting: camera is off (screen off or locked, or Test mode open)"
+            else -> "Active. Keep your hand 30 cm–1 m from the camera."
         },
         color = if (motion.running && !motion.paused) MaterialTheme.colorScheme.primary
         else MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    if (motion.running && motion.cameraActive) {
+        val s = debug?.snapshot
+        Text(
+            "Hand: ${if (s?.handPresent == true) "yes" else "no"} · " +
+                "Last gesture: ${s?.lastMotion?.label ?: "-"}",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
     motion.error?.let { Text("Error: $it", color = MaterialTheme.colorScheme.error) }
     message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     if (motion.running) {
@@ -186,73 +182,35 @@ private fun MotionSection(
 }
 
 @Composable
-private fun DebugSection(debug: DebugFrame?, motion: MotionState) {
-    Text("Live debug", style = MaterialTheme.typography.titleMedium)
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        LandmarkView(debug?.landmarks, Modifier.width(120.dp))
-        val s = debug?.snapshot
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            val style = MaterialTheme.typography.bodySmall
-            Text("State: ${s?.state ?: "-"}", style = style)
-            Text("Hand: ${if (s?.handPresent == true) "yes" else "no"}", style = style)
-            Text("Pose: ${s?.pose ?: "-"} (${(s?.poseScore ?: 0f).fmt()})", style = style)
-            Text("dx: ${(s?.dx ?: 0f).fmt()}  dy: ${(s?.dy ?: 0f).fmt()}", style = style)
-            Text(
-                "Distance: " + (s?.distanceCm?.let { String.format(Locale.US, "%.0f cm", it) } ?: "-") +
-                    if (s != null && !s.inRange) " (out of range)" else "",
-                style = style,
-                color = if (s != null && !s.inRange) MaterialTheme.colorScheme.error
-                else MaterialTheme.colorScheme.onSurface,
-            )
-            Text("Last motion: ${s?.lastMotion ?: "-"}", style = style)
-            Text("FPS: ${String.format(Locale.US, "%.1f", debug?.fps ?: 0f)}", style = style)
-            Text("Delegate: ${motion.delegate ?: "-"}", style = style)
-        }
+private fun ProfileSection(
+    profiles: List<Profile>,
+    activeProfile: Profile?,
+    onSelectProfile: (String) -> Unit,
+    onEditProfile: (String) -> Unit,
+    onOpenProfiles: () -> Unit,
+) {
+    Text("Active profile", style = MaterialTheme.typography.titleMedium)
+    if (activeProfile == null || profiles.isEmpty()) {
+        Text("Loading…", style = MaterialTheme.typography.bodySmall)
+        return
     }
-}
-
-private fun Float.fmt() = String.format(Locale.US, "%+.2f", this)
-
-private val testActions = listOf(
-    "Next (swipe up)" to DeviceAction.Swipe(Direction.UP),
-    "Previous (swipe down)" to DeviceAction.Swipe(Direction.DOWN),
-    "Tap center (pause/play)" to DeviceAction.TapCenter,
-    "Double-tap center (like)" to DeviceAction.DoubleTapCenter,
-    "Back" to DeviceAction.Global(AccessibilityService.GLOBAL_ACTION_BACK),
-)
-
-private const val TRIGGER_DELAY_SECONDS = 3
-
-@Composable
-private fun InjectionTestSection(serviceEnabled: Boolean, onDispatch: (DeviceAction) -> Boolean) {
-    val scope = rememberCoroutineScope()
-    var status by remember { mutableStateOf("") }
-    var pending by remember { mutableStateOf<Job?>(null) }
-
-    Text("Injection test", style = MaterialTheme.typography.titleMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        ChoiceDropdown(
+            selected = activeProfile,
+            options = profiles,
+            optionLabel = { it.name },
+            onSelect = { onSelectProfile(it.id) },
+            modifier = Modifier.weight(1f),
+        )
+        TextButton(onClick = { onEditProfile(activeProfile.id) }) { Text("Edit") }
+    }
     Text(
-        "Tap an action, then switch to TikTok within $TRIGGER_DELAY_SECONDS s. " +
-            "The action fires in whatever app is open.",
-        style = MaterialTheme.typography.bodyMedium,
+        "Changes apply immediately, even while motion control runs.",
+        style = MaterialTheme.typography.bodySmall,
     )
-    testActions.forEach { (label, action) ->
-        OutlinedButton(
-            enabled = serviceEnabled,
-            onClick = {
-                pending?.cancel()
-                pending = scope.launch {
-                    for (s in TRIGGER_DELAY_SECONDS downTo 1) {
-                        status = "$label in $s s…"
-                        delay(1000)
-                    }
-                    status = if (onDispatch(action)) "$label: dispatched"
-                    else "$label: failed (service off?)"
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-        ) { Text(label) }
+    OutlinedButton(onClick = onOpenProfiles, modifier = Modifier.fillMaxWidth()) {
+        Text("Manage profiles")
     }
-    if (status.isNotEmpty()) Text(status, style = MaterialTheme.typography.bodyMedium)
 }
 
 @Preview(showBackground = true)
@@ -264,9 +222,12 @@ fun HomeScreenPreview() {
             foregroundApp = "com.zhiliaoapp.musically",
             motion = MotionState(running = true, cameraActive = true, delegate = "GPU"),
             debug = null,
-            startRequested = false,
-            onStartRequestHandled = {},
-            onDispatch = { true },
+            profiles = DefaultProfiles.all,
+            activeProfile = DefaultProfiles.shortVideo,
+            onSelectProfile = {},
+            onEditProfile = {},
+            onOpenProfiles = {},
+            onOpenTestMode = {},
         )
     }
 }

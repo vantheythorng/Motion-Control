@@ -7,11 +7,11 @@ import com.kwan.mygesture.data.Motion
  * Turns per-frame hand observations into [Motion]s and emits the bound [DeviceAction].
  *
  * State machine: IDLE → ARMED → TRIGGERED → COOLDOWN → IDLE. Pure Kotlin so it can be unit-tested;
- * [onFrame] must be called from a single thread.
+ * [onFrame] must be called from a single thread. [applyProfile] may be called from any thread.
  */
 class GestureEngine(
-    @Volatile var bindings: Map<Motion, DeviceAction>,
-    private val config: Config = Config(),
+    bindings: Map<Motion, DeviceAction>,
+    config: Config = Config(),
     private val isPaused: () -> Boolean = { false },
     /** Called when a motion is recognized but not acted on, with the reason (for diagnostics). */
     private val onIgnored: (Motion, String) -> Unit = { _, _ -> },
@@ -62,6 +62,15 @@ class GestureEngine(
 
     private data class TimedPoint(val x: Float, val y: Float, val t: Long)
 
+    /** Bindings and config are swapped together, so a frame never sees half of a new profile. */
+    private class Tuning(val bindings: Map<Motion, DeviceAction>, val config: Config)
+
+    @Volatile private var tuning = Tuning(bindings.withoutNone(), config)
+
+    // Snapshot of [tuning] for the frame being processed; only touched on the frame thread.
+    private var bindings = tuning.bindings
+    private var config = tuning.config
+
     private val swipe = AirSwipeDetector(config.swipeMinTravel, config.swipeDominance)
     private val palmTrail = ArrayDeque<TimedPoint>()
 
@@ -81,7 +90,18 @@ class GestureEngine(
     private var lastFireAt = 0L
     private var lastMotion: Motion? = null
 
+    /** Switches to a new profile's bindings and tuning without resetting the gesture state. */
+    fun applyProfile(bindings: Map<Motion, DeviceAction>, config: Config) {
+        tuning = Tuning(bindings.withoutNone(), config)
+    }
+
     fun onFrame(frame: HandFrame): Snapshot {
+        val current = tuning
+        bindings = current.bindings
+        config = current.config
+        swipe.minTravel = config.swipeMinTravel
+        swipe.dominance = config.swipeDominance
+
         val now = frame.timestampMs
         if (state == State.TRIGGERED) state = State.COOLDOWN
         if (state == State.COOLDOWN && now - lastFireAt >= config.cooldownMs) state = State.IDLE
@@ -209,6 +229,9 @@ class GestureEngine(
     )
 
     private companion object {
+        /** "None" means unbound: as a binding it would start a cooldown and swallow the gesture. */
+        fun Map<Motion, DeviceAction>.withoutNone() = filterValues { it != DeviceAction.None }
+
         /** MIDDLE_FINGER_MCP: stable for both open and closed hands. */
         const val PALM_CENTER = 9
         const val STILL_WINDOW_MS = 300L

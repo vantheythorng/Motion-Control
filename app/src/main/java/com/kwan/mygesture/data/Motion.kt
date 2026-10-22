@@ -5,15 +5,16 @@ enum class Motion {
     OPEN_PALM_HOLD, THUMBS_UP, THUMBS_DOWN, FIST_HOLD, VICTORY, POINTING_UP,
 }
 
-/** The spec's "Short video" profile, hard-coded until DataStore-backed profiles (Phase 3). */
-object DefaultBindings {
-    val shortVideo: Map<Motion, DeviceAction> = mapOf(
-        Motion.AIR_SWIPE_UP to DeviceAction.Swipe(Direction.UP),
-        Motion.AIR_SWIPE_DOWN to DeviceAction.Swipe(Direction.DOWN),
-        Motion.OPEN_PALM_HOLD to DeviceAction.TapCenter, // pause/play the video
-        Motion.THUMBS_UP to DeviceAction.DoubleTapCenter, // like
-        // No gesture pauses motion control (that blocked every other gesture); pausing is only
-        // done from the notification.
-        Motion.FIST_HOLD to DeviceAction.TapCenter, // pause/play the video
-    )
-}
+val Motion.label: String
+    get() = when (this) {
+        Motion.AIR_SWIPE_UP -> "Air swipe up"
+        Motion.AIR_SWIPE_DOWN -> "Air swipe down"
+        Motion.AIR_SWIPE_LEFT -> "Air swipe left"
+        Motion.AIR_SWIPE_RIGHT -> "Air swipe right"
+        Motion.OPEN_PALM_HOLD -> "Open palm (hold)"
+        Motion.THUMBS_UP -> "Thumbs up"
+        Motion.THUMBS_DOWN -> "Thumbs down"
+        Motion.FIST_HOLD -> "Fist (hold)"
+        Motion.VICTORY -> "Victory ✌"
+        Motion.POINTING_UP -> "Pointing up"
+    }

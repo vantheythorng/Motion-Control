@@ -1,6 +1,6 @@
 package com.kwan.mygesture.motion
 
-import com.kwan.mygesture.data.DefaultBindings
+import com.kwan.mygesture.data.DefaultProfiles
 import com.kwan.mygesture.data.DeviceAction
 import com.kwan.mygesture.data.Direction
 import com.kwan.mygesture.data.Motion
@@ -14,7 +14,7 @@ class GestureEngineTest {
     private var now = 1_000L
 
     private val engine = GestureEngine(
-        bindings = DefaultBindings.shortVideo + (Motion.OPEN_PALM_HOLD to DeviceAction.TapCenter),
+        bindings = DefaultProfiles.shortVideo.bindings + (Motion.OPEN_PALM_HOLD to DeviceAction.TapCenter),
         isPaused = { paused },
         onAction = { motion, action ->
             fired += motion
@@ -116,14 +116,14 @@ class GestureEngineTest {
 
     @Test fun openPalmHoldPlaysOrPausesVideo() {
         val actions = mutableListOf<DeviceAction>()
-        val e = GestureEngine(DefaultBindings.shortVideo) { _, action -> actions += action }
+        val e = GestureEngine(DefaultProfiles.shortVideo.bindings) { _, action -> actions += action }
         repeat(20) { e.onFrame(HandFrame(now, List(21) { HandPoint(0.5f, 0.8f) }, "Open_Palm", 0.9f)); now += FRAME_MS }
         assertEquals(listOf<DeviceAction>(DeviceAction.TapCenter), actions)
     }
 
     @Test fun lowConfidenceOpenPalmFiresWhenFingersAreExtended() {
         val actions = mutableListOf<DeviceAction>()
-        val e = GestureEngine(DefaultBindings.shortVideo) { _, action -> actions += action }
+        val e = GestureEngine(DefaultProfiles.shortVideo.bindings) { _, action -> actions += action }
         // Classifier unsure (0.55, below the 0.6 threshold) but all four fingertips are well
         // above their PIP joints.
         val palm = List(21) { HandPoint(0.5f, 0.8f) }.toMutableList().apply {
@@ -192,7 +192,7 @@ class GestureEngineTest {
 
     @Test fun fistHoldPlaysOrPausesVideoAndNeverBlocksOtherMotions() {
         val actions = mutableListOf<DeviceAction>()
-        val e = GestureEngine(DefaultBindings.shortVideo) { _, action -> actions += action }
+        val e = GestureEngine(DefaultProfiles.shortVideo.bindings) { _, action -> actions += action }
         fun frame(y: Float, gesture: String) {
             e.onFrame(HandFrame(now, List(21) { HandPoint(0.5f, y) }, gesture, 0.9f))
             now += FRAME_MS
@@ -225,11 +225,61 @@ class GestureEngineTest {
         assertEquals(emptyList<Motion>(), fired)
     }
 
-    @Test fun bindingsCanBeSwappedLive() {
-        engine.bindings = mapOf(Motion.AIR_SWIPE_UP to DeviceAction.Swipe(Direction.DOWN))
-        holdStill("None", 200)
-        moveVertically(0.8f, 0.3f)
-        assertEquals(listOf(Motion.AIR_SWIPE_UP), fired)
+    /** A hand at x = 0.5 and [y] showing no pose, fed to [e]. */
+    private fun frameAt(e: GestureEngine, y: Float, gesture: String = "None") {
+        e.onFrame(HandFrame(now, List(21) { HandPoint(0.5f, y) }, gesture, 0.9f))
+        now += FRAME_MS
+    }
+
+    private fun swipe(e: GestureEngine, fromY: Float, toY: Float) =
+        (0..6).forEach { frameAt(e, fromY + (toY - fromY) * it / 6) }
+
+    @Test fun applyProfileRemapsLiveWithoutResettingState() {
+        val actions = mutableListOf<DeviceAction>()
+        val e = GestureEngine(DefaultProfiles.shortVideo.bindings) { _, action -> actions += action }
+        repeat(3) { frameAt(e, 0.8f) }
+        swipe(e, 0.8f, 0.3f) // next
+        // Remapped from the editor while the hand stays in view; the engine doesn't re-arm.
+        e.applyProfile(
+            mapOf(Motion.AIR_SWIPE_UP to DeviceAction.Swipe(Direction.DOWN)),
+            ProfileTuning.configFor(DefaultProfiles.shortVideo),
+        )
+        swipe(e, 0.3f, 0.8f) // return stroke, inside the cooldown
+        repeat(14) { frameAt(e, 0.8f) }
+        swipe(e, 0.8f, 0.3f) // now previous
+        assertEquals(
+            listOf(DeviceAction.Swipe(Direction.UP), DeviceAction.Swipe(Direction.DOWN)),
+            actions,
+        )
+    }
+
+    @Test fun noneBindingDoesNotSwallowGesture() {
+        // If "None" counted as an action, the swipe up would start a cooldown and block the
+        // swipe down right after it.
+        val actions = mutableListOf<DeviceAction>()
+        val e = GestureEngine(
+            mapOf(
+                Motion.AIR_SWIPE_UP to DeviceAction.None,
+                Motion.AIR_SWIPE_DOWN to DeviceAction.Swipe(Direction.DOWN),
+            )
+        ) { _, action -> actions += action }
+        repeat(3) { frameAt(e, 0.8f) }
+        swipe(e, 0.8f, 0.3f)
+        swipe(e, 0.3f, 0.8f)
+        assertEquals(listOf<DeviceAction>(DeviceAction.Swipe(Direction.DOWN)), actions)
+    }
+
+    @Test fun sensitivityChangesSwipeThreshold() {
+        fun firedAt(sensitivity: Float): List<Motion> {
+            val got = mutableListOf<Motion>()
+            val profile = DefaultProfiles.shortVideo.copy(sensitivity = sensitivity)
+            val e = GestureEngine(profile.bindings, ProfileTuning.configFor(profile)) { motion, _ -> got += motion }
+            repeat(3) { frameAt(e, 0.8f) }
+            swipe(e, 0.8f, 0.68f) // a small swipe: 12 % of the frame
+            return got
+        }
+        assertEquals(emptyList<Motion>(), firedAt(0.5f)) // default needs 18 %
+        assertEquals(listOf(Motion.AIR_SWIPE_UP), firedAt(1f)) // most sensitive needs 9 %
     }
 
     private companion object {

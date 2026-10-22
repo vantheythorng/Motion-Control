@@ -14,6 +14,9 @@ import androidx.camera.core.CameraInfo
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
+import androidx.camera.core.Preview
+import androidx.camera.core.UseCase
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -35,6 +38,9 @@ import kotlin.math.max
 /**
  * Binds the front camera to an [ImageAnalysis] use case and runs the MediaPipe Gesture Recognizer
  * on each frame. [onFrame] and [onError] are called on MediaPipe's result thread.
+ *
+ * Two trackers exist (the service's and Test mode's), sharing the process-wide camera provider,
+ * so each only ever unbinds its own use cases.
  */
 class HandTracker(
     private val context: Context,
@@ -46,6 +52,7 @@ class HandTracker(
     private var recognizer: GestureRecognizer? = null
     private var cameraProvider: ProcessCameraProvider? = null
     private var analysis: ImageAnalysis? = null
+    private var boundUseCases: Array<UseCase> = emptyArray()
 
     // Touched only on the analysis executor / MediaPipe result thread.
     @Volatile private var lastHandAt = 0L
@@ -56,8 +63,11 @@ class HandTracker(
 
     val isRunning: Boolean get() = analysis != null
 
-    /** Binds the camera to [owner]. Safe to call repeatedly. Main thread only. */
-    fun start(owner: LifecycleOwner) {
+    /**
+     * Binds the camera to [owner], plus a 4:3 [Preview] (matching the analysis frames) when
+     * [previewSurfaceProvider] is given. Safe to call repeatedly. Main thread only.
+     */
+    fun start(owner: LifecycleOwner, previewSurfaceProvider: Preview.SurfaceProvider? = null) {
         if (analysis != null) return
         lastHandAt = SystemClock.uptimeMillis()
         analysisExecutor.execute { ensureRecognizer() }
@@ -78,6 +88,17 @@ class HandTracker(
             .build()
             .also { it.setAnalyzer(analysisExecutor, ::analyze) }
         analysis = useCase
+        val preview = previewSurfaceProvider?.let { provider ->
+            Preview.Builder()
+                .setResolutionSelector(
+                    ResolutionSelector.Builder()
+                        .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                        .build()
+                )
+                .build()
+                .also { it.setSurfaceProvider(provider) }
+        }
+        val useCases = listOfNotNull<UseCase>(useCase, preview).toTypedArray()
 
         val future = ProcessCameraProvider.getInstance(context)
         future.addListener({
@@ -86,8 +107,8 @@ class HandTracker(
             try {
                 val provider = future.get()
                 cameraProvider = provider
-                provider.unbindAll()
-                val camera = provider.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, useCase)
+                val camera = provider.bindToLifecycle(owner, CameraSelector.DEFAULT_FRONT_CAMERA, *useCases)
+                boundUseCases = useCases
                 focalPerSensorWidth = readFocalPerSensorWidth(camera.cameraInfo)
             } catch (e: Exception) {
                 analysis = null
@@ -100,7 +121,8 @@ class HandTracker(
     fun stop() {
         analysis?.clearAnalyzer()
         analysis = null
-        cameraProvider?.unbindAll()
+        cameraProvider?.unbind(*boundUseCases)
+        boundUseCases = emptyArray()
     }
 
     /** Main thread only. The tracker can't be restarted afterwards. */

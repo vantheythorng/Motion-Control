@@ -55,14 +55,14 @@ FloatingHeadService (overlay bubble)       ProfileRepository    AirScrollAccessi
 | Component | Responsibility |
 |---|---|
 | `AirScrollAccessibilityService` | Performs gestures via `dispatchGesture()` and global actions via `performGlobalAction()`. Tracks foreground app from `TYPE_WINDOW_STATE_CHANGED`. Detects when `MotionService` is dead and shows re-arm prompt. |
-| `MotionService` | Foreground `LifecycleService` (type `camera`). Binds CameraX `ImageAnalysis`, runs MediaPipe Gesture Recognizer, feeds results to `GestureEngine`. Owns the persistent notification. Returns `START_STICKY`. |
+| `MotionService` | Foreground `LifecycleService` (type `camera`). Binds CameraX `ImageAnalysis`, runs MediaPipe Gesture Recognizer, feeds results to `GestureEngine`. Owns the persistent notification. ~~Returns `START_STICKY`.~~ Returns `START_NOT_STICKY` (see §12). |
 | `GestureEngine` | Converts raw detections into `Motion` events: confidence threshold, hold durations, cooldown, air-swipe detection, state machine. Looks up the active profile and emits `DeviceAction`. |
 | `ActionDispatcher` | Executes `DeviceAction` through the accessibility service (or `AudioManager` for volume). |
 | `FloatingHeadService` | Draggable overlay bubble with status colors, quick panel, drag-to-× hide. See open decision D1. |
 | `ArmCameraActivity` | Translucent, no-UI activity launched from bubble/notification tap. Starts `MotionService` while the app is briefly foreground (satisfies Android 14+ camera FGS rules), then `finish()`. |
 | `BubbleController` | Observes `bubbleEnabled` setting and starts/stops `FloatingHeadService` accordingly. Single source of truth. |
 | `ProfileRepository` / `SettingsRepository` | DataStore-backed persistence. |
-| `BootReceiver` | On `BOOT_COMPLETED`, posts a "Tap to enable motion control" notification. Must NOT start the camera service (disallowed on Android 14+). |
+| ~~`BootReceiver`~~ | ~~On `BOOT_COMPLETED`, posts a "Tap to enable motion control" notification.~~ Dropped: nothing happens at boot (see §12). |
 
 ### Suggested package layout
 
@@ -419,7 +419,7 @@ fun BubbleSettingRow(settings: SettingsRepository) {
 - **Android 14+ camera FGS:** must start while app is visible; cannot start from `BOOT_COMPLETED`. Use `ArmCameraActivity` for re-arm from bubble/notification.
 - **Camera privacy indicator** (green dot) is always visible while running. Tell users up front.
 - **OEM killers** (very common devices in Cambodia: Oppo, Vivo, Xiaomi, Realme, Samsung) will kill services unless the user changes settings. Troubleshooting screen is required, not optional.
-- **Service recovery:** `START_STICKY`; accessibility service watches for `MotionService` death and shows re-arm notification/bubble.
+- ~~**Service recovery:** `START_STICKY`; accessibility service watches for `MotionService` death and shows re-arm notification/bubble.~~ Superseded: no automatic recovery (see §12).
 - **Front camera mirroring** affects left/right swipes.
 - **Accessibility gesture coordinates** are in screen pixels; handle rotation and display cutouts.
 
@@ -441,7 +441,7 @@ fun BubbleSettingRow(settings: SettingsRepository) {
 | 3 | `Profile` model, DataStore, profile editor, test mode | User remaps a motion and the new mapping works without restarting the service |
 | 4 | Foreground-app detection, per-app profiles, default profiles, camera released for unprofiled apps | Camera dot disappears when leaving TikTok for an unprofiled app and returns on re-entry |
 | 5 | Floating bubble, quick panel, `ArmCameraActivity` re-arm, bubble toggle setting | Switch, × target, and notification action all stay in sync; bubble tap re-arms camera after reboot |
-| 6 | Boot receiver, OEM guides, battery tuning, Play disclosures | 30 min continuous use without false triggers, service death, or overheating on at least one Oppo/Vivo/Xiaomi device |
+| 6 | ~~Boot receiver,~~ OEM guides, battery tuning, Play disclosures | 30 min continuous use without false triggers, service death, or overheating on at least one Oppo/Vivo/Xiaomi device |
 
 Build a debug overlay (landmarks + live dx/dy + state machine state) early in Phase 2; threshold tuning is the biggest time sink.
 
@@ -453,3 +453,14 @@ Build a debug overlay (landmarks + live dx/dy + state machine state) early in Ph
 - **D2 — Proximity-sensor wave** as a no-camera fallback mode (cheap, battery-friendly, 1–2 commands). Not in v1 scope; easy add later.
 - **D3 — Head/face gestures** (MediaPipe Face Landmarker: nod, long blink) as an alternate input mode. Post-v1.
 - **D4 — DI framework:** Koin vs Hilt.
+
+---
+
+## 12. Decisions made during implementation
+
+- **Motion control never starts on its own (user decision, Phase 3).** It runs only after the user taps Start. `MotionService` returns `START_NOT_STICKY`, there is no `BootReceiver` and no `RECEIVE_BOOT_COMPLETED`, and nothing posts "re-arm" notifications or auto-starts from a notification tap. Phase 5's `ArmCameraActivity` may only run from an explicit bubble tap.
+- **D1 (bubble):** hosted in `AirScrollAccessibilityService` as `TYPE_ACCESSIBILITY_OVERLAY`; no `SYSTEM_ALERT_WINDOW`.
+- **D4 (DI):** Koin.
+- **Default bindings:** FIST_HOLD → TapCenter (play/pause), not TogglePause. A gesture that pauses gestures blocked every other gesture; pausing is done from the notification. TogglePause stays available in the profile editor, with a warning.
+- **Working range:** hands are only accepted 30 cm – 1 m from the camera (estimated from MediaPipe world landmarks and the camera focal length).
+- **Active profile (Phase 3):** chosen on the Home screen until Phase 4 adds per-app switching.

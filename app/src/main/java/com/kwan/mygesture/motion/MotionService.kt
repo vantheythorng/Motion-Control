@@ -22,26 +22,32 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
+import androidx.lifecycle.lifecycleScope
 import com.kwan.mygesture.MainActivity
 import com.kwan.mygesture.R
 import com.kwan.mygesture.accessibility.ActionDispatcher
-import com.kwan.mygesture.data.DefaultBindings
+import com.kwan.mygesture.data.DefaultProfiles
 import com.kwan.mygesture.data.DeviceAction
 import com.kwan.mygesture.data.Motion
+import com.kwan.mygesture.data.ProfileRepository
 import com.kwan.mygesture.motion.camera.HandTracker
 import org.koin.android.ext.android.inject
+import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.abs
 
 /**
  * Foreground service (type camera) that keeps hand tracking running while the user is in other
  * apps. Must be started while our UI is visible: Android 14+ forbids starting a camera FGS from
- * the background.
+ * the background. It only ever starts from the user tapping Start: it is never restarted by the
+ * system (START_NOT_STICKY) or on boot.
  */
 class MotionService : LifecycleService() {
 
     private val store: MotionStateStore by inject()
     private val dispatcher: ActionDispatcher by inject()
+    private val profiles: ProfileRepository by inject()
+    private var profileName = DefaultProfiles.shortVideo.name
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var engine: GestureEngine
@@ -70,7 +76,8 @@ class MotionService : LifecycleService() {
     override fun onCreate() {
         super.onCreate()
         engine = GestureEngine(
-            bindings = DefaultBindings.shortVideo,
+            bindings = DefaultProfiles.shortVideo.bindings,
+            config = ProfileTuning.configFor(DefaultProfiles.shortVideo),
             isPaused = { store.state.value.paused },
             onIgnored = { motion, reason -> Log.d(TAG, "$motion ignored: $reason") },
             onAction = { motion, action -> mainHandler.post { perform(motion, action) } },
@@ -95,6 +102,21 @@ class MotionService : LifecycleService() {
             },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+        // Profile edits apply live, without restarting the service.
+        lifecycleScope.launch {
+            profiles.activeProfile.collect { profile ->
+                engine.applyProfile(profile.bindings, ProfileTuning.configFor(profile))
+                Log.d(TAG, "Profile applied: ${profile.name} ${profile.bindings}, sensitivity ${profile.sensitivity}")
+                profileName = profile.name
+                if (inForeground) refreshNotification()
+            }
+        }
+        // Test mode borrows the front camera; hand it back when test mode ends.
+        lifecycleScope.launch {
+            store.testModeActive.collect { active ->
+                if (active) stopCamera() else startCameraIfUsable()
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -107,12 +129,13 @@ class MotionService : LifecycleService() {
             ACTION_PAUSE, ACTION_RESUME -> {
                 if (inForeground) setPaused(intent.action == ACTION_PAUSE) else stopSelf()
             }
-            // ACTION_START, or a null intent when the system restarts us after a kill. Every
-            // startForegroundService() call must be answered with startForeground(), even when
-            // already running.
+            // ACTION_START. Every startForegroundService() call must be answered with
+            // startForeground(), even when already running.
             else -> startMotion()
         }
-        return START_STICKY
+        // Never restarted by the system after being killed: motion control only runs when the
+        // user starts it.
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
@@ -120,7 +143,7 @@ class MotionService : LifecycleService() {
         unregisterReceiver(screenReceiver)
         tracker.close()
         mainHandler.removeCallbacksAndMessages(null)
-        store.update { MotionState(needsReArm = it.needsReArm) }
+        store.update { MotionState(error = it.error) }
         store.publishDebug(null)
         super.onDestroy()
     }
@@ -139,17 +162,14 @@ class MotionService : LifecycleService() {
             )
         } catch (e: Exception) {
             if (inForeground) return
-            // Typically a START_STICKY restart: Android 14+ won't let a background app start a
-            // camera FGS, so ask the user to re-arm from the UI instead.
+            // E.g. the camera permission was revoked. Don't retry: the user starts it again.
             Log.w(TAG, "Can't start camera foreground service", e)
-            store.update { MotionState(needsReArm = true) }
-            postReArmNotification()
+            store.update { MotionState(error = "Couldn't start: ${e.message ?: e.javaClass.simpleName}") }
             stopSelf()
             return
         }
         if (inForeground) return
         inForeground = true
-        getSystemService(NotificationManager::class.java).cancel(REARM_NOTIFICATION_ID)
         store.update { MotionState(running = true, delegate = it.delegate) }
         startCameraIfUsable()
     }
@@ -163,7 +183,7 @@ class MotionService : LifecycleService() {
     }
 
     private fun startCameraIfUsable() {
-        if (!inForeground || tracker.isRunning) return
+        if (!inForeground || tracker.isRunning || store.testModeActive.value) return
         val interactive = getSystemService(PowerManager::class.java).isInteractive
         val locked = getSystemService(KeyguardManager::class.java).isKeyguardLocked
         if (!interactive || locked) return
@@ -234,11 +254,15 @@ class MotionService : LifecycleService() {
         // Visible feedback while another app is in front; otherwise a pause is easy to miss.
         Toast.makeText(
             this,
-            if (paused) "Motion control paused. Tap Resume in the notification." else "Motion control resumed",
+            if (paused) "Motion control paused" else "Motion control resumed",
             Toast.LENGTH_SHORT,
         ).show()
+        refreshNotification()
+    }
+
+    private fun refreshNotification() {
         getSystemService(NotificationManager::class.java)
-            .notify(NOTIFICATION_ID, buildNotification(paused))
+            .notify(NOTIFICATION_ID, buildNotification(store.state.value.paused))
     }
 
     private fun createChannel() {
@@ -253,13 +277,12 @@ class MotionService : LifecycleService() {
             .setContentTitle(if (paused) "Motion control paused" else "Motion control active")
             .setContentText(
                 if (paused) "Gestures are ignored. Tap Resume to turn them back on."
-                else "Swipe up/down: next/previous. Open palm or fist: play/pause. " +
-                    "Thumbs up: like. Hand 30 cm–1 m away."
+                else "Profile: $profileName. Keep your hand 30 cm–1 m from the camera."
             )
             .setOngoing(true)
             .setSilent(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .setContentIntent(openAppIntent(arm = false))
+            .setContentIntent(openAppIntent())
             .addAction(
                 0, if (paused) "Resume" else "Pause",
                 servicePendingIntent(if (paused) ACTION_RESUME else ACTION_PAUSE),
@@ -267,28 +290,16 @@ class MotionService : LifecycleService() {
             .addAction(0, "Stop", servicePendingIntent(ACTION_STOP))
             .build()
 
-    private fun postReArmNotification() {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_motion)
-            .setContentTitle("Motion control stopped")
-            .setContentText("Tap to turn it back on")
-            .setAutoCancel(true)
-            .setContentIntent(openAppIntent(arm = true))
-            .build()
-        getSystemService(NotificationManager::class.java).notify(REARM_NOTIFICATION_ID, notification)
-    }
-
     private fun servicePendingIntent(action: String): PendingIntent = PendingIntent.getService(
         this, action.hashCode(),
         Intent(this, MotionService::class.java).setAction(action),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
-    private fun openAppIntent(arm: Boolean): PendingIntent = PendingIntent.getActivity(
-        this, if (arm) 1 else 0,
-        Intent(this, MainActivity::class.java)
-            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra(MainActivity.EXTRA_START_MOTION, arm),
+    /** Only opens the app; it never starts motion control. */
+    private fun openAppIntent(): PendingIntent = PendingIntent.getActivity(
+        this, 0,
+        Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
@@ -296,7 +307,6 @@ class MotionService : LifecycleService() {
         private const val TAG = "MyGesture"
         private const val CHANNEL_ID = "motion"
         private const val NOTIFICATION_ID = 1
-        private const val REARM_NOTIFICATION_ID = 2
         private const val ACTION_START = "com.kwan.mygesture.action.START"
         private const val ACTION_STOP = "com.kwan.mygesture.action.STOP"
         private const val ACTION_PAUSE = "com.kwan.mygesture.action.PAUSE"

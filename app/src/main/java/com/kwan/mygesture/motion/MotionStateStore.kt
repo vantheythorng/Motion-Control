@@ -12,8 +12,6 @@ data class MotionState(
     val paused: Boolean = false,
     /** The camera is bound; false while the screen is off or locked. */
     val cameraActive: Boolean = false,
-    /** The service died and couldn't restart the camera from the background. */
-    val needsReArm: Boolean = false,
     /** "GPU" or "CPU" once the recognizer is created. */
     val delegate: String? = null,
     val error: String? = null,
@@ -32,6 +30,14 @@ class MotionStateStore {
 
     private val _debug = MutableStateFlow<DebugFrame?>(null)
     val debug: StateFlow<DebugFrame?> = _debug.asStateFlow()
+
+    /** True while the Test mode screen has the front camera; the service releases it meanwhile. */
+    private val _testModeActive = MutableStateFlow(false)
+    val testModeActive: StateFlow<Boolean> = _testModeActive.asStateFlow()
+
+    fun setTestModeActive(active: Boolean) {
+        _testModeActive.value = active
+    }
 
     fun update(transform: (MotionState) -> MotionState) = _state.update(transform)
 

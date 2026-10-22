@@ -1,4 +1,4 @@
-package com.kwan.mygesture.ui.home
+package com.kwan.mygesture.ui.common
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -7,6 +7,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.kwan.mygesture.motion.HandPoint
 
@@ -18,15 +19,19 @@ private val HAND_CONNECTIONS = listOf(
     13 to 17, 0 to 17, 17 to 18, 18 to 19, 19 to 20,
 )
 
-/** Draws hand landmarks in the camera frame's coordinate space (portrait, mirrored). */
+/**
+ * Draws hand landmarks in the camera frame's coordinate space (portrait, mirrored). With
+ * [transparent] it has no background, for drawing over a camera preview.
+ */
 @Composable
-fun LandmarkView(landmarks: List<HandPoint>?, modifier: Modifier = Modifier) {
+fun LandmarkView(landmarks: List<HandPoint>?, modifier: Modifier = Modifier, transparent: Boolean = false) {
     val bone = MaterialTheme.colorScheme.primary
     val joint = MaterialTheme.colorScheme.tertiary
+    val background = if (transparent) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant
     Canvas(
         modifier
             .aspectRatio(3f / 4f)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .background(background)
     ) {
         val points = landmarks ?: return@Canvas
         fun HandPoint.offset() = Offset(x * size.width, y * size.height)
