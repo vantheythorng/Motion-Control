@@ -19,3 +19,12 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# MediaPipe's native code looks up Java classes, fields and methods by name over JNI (e.g.
+# MediaPipeException, ProtoUtil$SerializedMessage.typeName/value), and its AARs ship no consumer
+# keep rules. Without these, R8 strips or renames them and GestureRecognizer creation fails in
+# release builds ("Gesture recognizer could not be created").
+-keep class com.google.mediapipe.** { *; }
+-keep class com.google.protobuf.** { *; }
+-dontwarn com.google.mediapipe.**
+-dontwarn com.google.protobuf.**

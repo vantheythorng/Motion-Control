@@ -13,3 +13,11 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Signing keys: never commit these.
+/secret/
+*.jks
+*.keystore
+
+# Signed APKs/bundles from Android Studio's "Generate Signed App Bundle / APK".
+/app/release/
