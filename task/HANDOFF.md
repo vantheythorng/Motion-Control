@@ -17,6 +17,7 @@ This document is the full spec for a native Android app that lets users control 
 | R5 | Motion control can be limited to specific apps, with per-app profiles | Optional (Phase 4) |
 | R6 | Setting to toggle the floating bubble on/off | Must (with R3) |
 | R7 | User records their own hand poses and binds them to actions like built-in gestures | Optional (Phase 7) |
+| R8 | Quick Settings tile in the notification shade to turn motion control on and off without opening the app | Optional (Phase 8) |
 
 Non-goals for v1: iOS, cloud processing, tilt/gyro gestures (require holding the phone).
 
@@ -374,6 +375,39 @@ Users record their own static hand shapes (e.g. 🤟, 👌, three fingers up) an
   - custom poses use `"custom:<id>"`
 - **Deleting a custom pose** removes its bindings from every profile.
 
+### 5.8 Quick Settings tile (Phase 8)
+
+A "Motion Control" tile in the notification shade. Tap it to turn motion control on or off without opening the app. It's a deliberate user tap, so it doesn't break the rule that motion control never starts on its own (§12).
+
+**Starting from the tile.**
+- Android 14+ only lets an app start a **camera** foreground service while one of its activities is visible. A tile tap doesn't count, so `TileService` must not call `startForegroundService` itself.
+- Instead the tile calls `startActivityAndCollapse(PendingIntent)` for `ArmCameraActivity`. On API 34+ only the `PendingIntent` overload is allowed. `ArmCameraActivity` is a translucent, no-UI activity, shared with the Phase 5 bubble. It:
+  - closes the shade
+  - starts `MotionService` while visible
+  - calls `finish()` at once, so the user stays in the app they were using
+- **Missing setup:** if the camera permission or the accessibility service is missing, the activity opens Motion Control's Home screen instead, so the user can fix it there.
+
+**Stopping** needs no visible UI: the tile sends `MotionService.stop()` directly.
+
+**Tile state** follows `MotionStateStore` while the shade is open (`onStartListening`):
+
+| State | Tile | Subtitle (API 29+) |
+|---|---|---|
+| Off | inactive | "Off" |
+| Running | active | the profile in use, e.g. "Short video · TikTok", or the camera-off reason ("No profile for Chrome") |
+| Paused | active | "Paused" |
+| Accessibility service off | inactive | "Set up in app" (tap opens the app) |
+
+- Icon: the existing hand icon `ic_motion`.
+- Long-press opens the app (`ACTION_QS_TILE_PREFERENCES` on `MainActivity`).
+
+**Adding the tile.** On Android 13+ Home offers "Add to Quick Settings", using `StatusBarManager.requestAddTileService`; the system shows its own confirmation. On Android 10–12 Home explains how to add it by editing the tiles.
+
+**Manifest.**
+- The `TileService` is exported, requires `android.permission.BIND_QUICK_SETTINGS_TILE`, and declares an intent filter for `android.service.quicksettings.action.QS_TILE`.
+- It uses `android.service.quicksettings.ACTIVE_TILE` meta-data, so the app updates the tile with `TileService.requestListeningState` when the state changes.
+- `ArmCameraActivity` is declared as in §6.
+
 ---
 
 ## 6. Manifest
@@ -444,6 +478,7 @@ Users record their own static hand shapes (e.g. 🤟, 👌, three fingers up) an
 | Profile editor | Motion → action dropdowns, sensitivity, cooldown, conflict warnings |
 | Test mode | Camera preview with landmark overlay, recognized gesture + confidence, live dx/dy; no actions fired |
 | Custom poses | Record, preview (live match %), rename, re-record and delete the user's own hand poses (Phase 7, §5.7) |
+| Quick Settings tile | Not a screen. A tile in the notification shade to turn motion control on and off, showing the profile in use; Home offers "Add to Quick Settings" (Phase 8, §5.8) |
 | Troubleshooting | Permission status re-check, brand-specific battery/auto-start guides (Oppo, Vivo, Xiaomi, Realme, Samsung; see dontkillmyapp.com) |
 
 ---
@@ -478,7 +513,9 @@ Users record their own static hand shapes (e.g. 🤟, 👌, three fingers up) an
 | 6 | ~~Boot receiver,~~ OEM guides, battery tuning, Play disclosures | 30 min continuous use without false triggers, service death, or overheating on at least one Oppo/Vivo/Xiaomi device |
 | 7 | Custom poses (§5.7): recording screen, normalized-landmark matching, string-keyed bindings, custom poses in the profile editor and Test mode | A user records a new pose (e.g. 🤟) in under 30 s, binds it to an action, and it fires in TikTok without restarting motion control; in a 2-minute session of normal hand movement and built-in poses it never fires by mistake; recording warns when the new pose is too similar to an existing one |
 
-Phase 7 doesn't depend on Phases 5–6 and can be built before them.
+| 8 | Quick Settings tile (§5.8): `TileService` with live state, `ArmCameraActivity` start path, "Add to Quick Settings" prompt on Home | From the notification shade, the tile starts motion control without leaving the open app (camera dot on in TikTok), stops it, and always shows the right state (off, running with profile, paused, setup needed), including after the app is closed or reinstalled; it never starts motion control on its own |
+
+Phases 7 and 8 don't depend on Phases 5–6 and can be built before them. Phase 8 builds `ArmCameraActivity`, which Phase 5 then reuses for the bubble.
 
 Build a debug overlay (landmarks + live dx/dy + state machine state) early in Phase 2; threshold tuning is the biggest time sink.
 
@@ -494,6 +531,7 @@ Build a debug overlay (landmarks + live dx/dy + state machine state) early in Ph
 - **D6 — Landmark space for custom-pose matching.** (a) Image landmarks (x, y), normalized as in §5.7: simple, but a hand turned towards or away from the camera changes the shape. (b) MediaPipe world landmarks (3D, metres): more robust to hand rotation, slightly noisier. Decide by recording the same poses both ways on device.
 - **D7 — Custom pose trigger.** A quick stable pose (~0.3 s, like thumbs up), or a 1 s still hold (like palm/fist). Possibly a per-pose option. Quick is more responsive; hold has fewer false triggers.
 - **D8 — Custom movements** (paths like a circle or a Z, matched with a $1-style unistroke recognizer). The hard part is knowing when a movement starts and ends: needs a start pose (e.g. point a finger, draw, open the hand) or a pause-move-pause rule. Post-Phase 7.
+- **D9 — What the Quick Settings tile toggles.** (a) Start/stop motion control. Recommended: it matches the tile's on/off look and the "never starts on its own" rule. (b) Pause/resume, with the tile hidden or inactive while motion control is off.
 
 ---
 
