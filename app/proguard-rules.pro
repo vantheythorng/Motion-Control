@@ -28,3 +28,9 @@
 -keep class com.google.protobuf.** { *; }
 -dontwarn com.google.mediapipe.**
 -dontwarn com.google.protobuf.**
+
+# MediaPipe logs through Flogger, which finds its caller by walking the stack for its own class
+# names. Renamed by R8, MediaPipe's Graph crashes on load with
+# "IllegalStateException: no caller found on the stack for: <obfuscated FluentLogger>".
+-keep class com.google.common.flogger.** { *; }
+-dontwarn com.google.common.flogger.**
