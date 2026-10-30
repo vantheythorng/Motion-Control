@@ -23,6 +23,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -36,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -45,6 +48,7 @@ import com.kwan.motioncontrol.data.DefaultProfiles
 import com.kwan.motioncontrol.data.OffReason
 import com.kwan.motioncontrol.data.cameraOffText
 import com.kwan.motioncontrol.data.Profile
+import com.kwan.motioncontrol.data.ThemeMode
 import com.kwan.motioncontrol.data.label
 import com.kwan.motioncontrol.motion.DebugFrame
 import com.kwan.motioncontrol.motion.MotionService
@@ -79,6 +83,8 @@ fun HomeScreen(
     onOpenTroubleshooting: () -> Unit,
     /** Whether the Quick Settings tile is already in the user's tiles. */
     tileAdded: Boolean,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
     bubbleEnabled: Boolean,
     onBubbleEnabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -90,7 +96,10 @@ fun HomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Motion Assessment", style = MaterialTheme.typography.headlineSmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Motion Assessment", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            ThemeMenu(themeMode, onThemeModeChange)
+        }
         AccessibilitySection(accessibilityEnabled)
         HorizontalDivider()
         MotionSection(motion, debug, route, appLabel)
@@ -117,6 +126,52 @@ fun HomeScreen(
         KeepRunningSection(onOpenTroubleshooting)
     }
 }
+
+/** The ⋮ action on Home: light, dark, or follow the phone. */
+@Composable
+private fun ThemeMenu(mode: ThemeMode, onChange: (ThemeMode) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "Theme")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            Text(
+                "Theme",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            )
+            ThemeMode.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label) },
+                    leadingIcon = { Icon(painterResource(option.icon), contentDescription = null) },
+                    trailingIcon = {
+                        if (option == mode) Icon(painterResource(R.drawable.ic_check), contentDescription = "Selected")
+                    },
+                    onClick = {
+                        expanded = false
+                        onChange(option)
+                    },
+                )
+            }
+        }
+    }
+}
+
+private val ThemeMode.label: String
+    get() = when (this) {
+        ThemeMode.SYSTEM -> "System default"
+        ThemeMode.LIGHT -> "Light"
+        ThemeMode.DARK -> "Dark"
+    }
+
+private val ThemeMode.icon: Int
+    get() = when (this) {
+        ThemeMode.SYSTEM -> R.drawable.ic_brightness_auto
+        ThemeMode.LIGHT -> R.drawable.ic_light_mode
+        ThemeMode.DARK -> R.drawable.ic_dark_mode
+    }
 
 /** Warns when Android may stop motion control in the background, and links to Troubleshooting. */
 @Composable
@@ -392,6 +447,8 @@ fun HomeScreenPreview() {
             onOpenTestMode = {},
             onOpenTroubleshooting = {},
             tileAdded = false,
+            themeMode = ThemeMode.SYSTEM,
+            onThemeModeChange = {},
             bubbleEnabled = true,
             onBubbleEnabledChange = {},
         )

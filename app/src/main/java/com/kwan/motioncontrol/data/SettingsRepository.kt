@@ -9,6 +9,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
+/** Light or dark appearance: follow the phone, or always one of them. */
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
 /** App settings, in the same DataStore as the profiles. */
 class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
@@ -41,6 +44,15 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[POSE_SPACE] = space.name }
     }
 
+    /** Chosen from the menu on the Home screen. */
+    val themeMode: Flow<ThemeMode> = dataStore.data
+        .map { prefs -> ThemeMode.entries.firstOrNull { it.name == prefs[THEME_MODE] } ?: ThemeMode.SYSTEM }
+        .distinctUntilChanged()
+
+    suspend fun setThemeMode(mode: ThemeMode) {
+        dataStore.edit { it[THEME_MODE] = mode.name }
+    }
+
     /** False until the user finishes (or skips through) the first-run onboarding. */
     val onboardingDone: Flow<Boolean> = dataStore.data.map { it[ONBOARDING_DONE] ?: false }.distinctUntilChanged()
 
@@ -68,6 +80,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val BUBBLE_HIDDEN_HINT_SHOWN = booleanPreferencesKey("bubble_hidden_hint_shown")
         private val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         private val POSE_SPACE = stringPreferencesKey("pose_space")
+        private val THEME_MODE = stringPreferencesKey("theme_mode")
 
         fun onlyInSelectedApps(prefs: Preferences): Boolean = prefs[ONLY_IN_SELECTED_APPS] ?: true
     }

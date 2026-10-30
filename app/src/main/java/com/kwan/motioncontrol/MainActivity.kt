@@ -2,7 +2,9 @@ package com.kwan.motioncontrol
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
+import androidx.activity.SystemBarStyle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +34,7 @@ import com.kwan.motioncontrol.data.PoseSpace
 import com.kwan.motioncontrol.data.ProfileRepository
 import com.kwan.motioncontrol.data.ProfileResolver
 import com.kwan.motioncontrol.data.SettingsRepository
+import com.kwan.motioncontrol.data.ThemeMode
 import com.kwan.motioncontrol.system.InstalledApps
 import com.kwan.motioncontrol.system.TileStatus
 import com.kwan.motioncontrol.ui.profiles.AppPickerScreen
@@ -43,6 +47,7 @@ import com.kwan.motioncontrol.ui.profiles.ProfileEditorScreen
 import com.kwan.motioncontrol.ui.profiles.ProfilesScreen
 import com.kwan.motioncontrol.ui.testmode.TestModeScreen
 import com.kwan.motioncontrol.ui.theme.MotionControlTheme
+import com.kwan.motioncontrol.ui.theme.isDark
 import com.kwan.motioncontrol.ui.troubleshooting.TroubleshootingScreen
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
@@ -63,9 +68,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         // Only for a fresh launch: after a recreation the back stack is already restored.
         if (savedInstanceState == null) editRequest = intent.getStringExtra(EXTRA_EDIT_PROFILE)
-        enableEdgeToEdge()
         setContent {
-            MotionControlTheme {
+            val themeMode by settings.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+            val dark = themeMode.isDark()
+            // Status and navigation bar icons follow the app's theme, not only the phone's.
+            DisposableEffect(dark) {
+                enableEdgeToEdge(
+                    statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
+                    navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM) { dark },
+                )
+                onDispose {}
+            }
+            MotionControlTheme(darkTheme = dark) {
                 // Null while DataStore loads, so neither screen flashes.
                 val onboardingDone by settings.onboardingDone.collectAsStateWithLifecycle(initialValue = null)
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -84,6 +98,7 @@ class MainActivity : ComponentActivity() {
                             dispatcher = dispatcher,
                             editRequest = editRequest,
                             onEditRequestHandled = { editRequest = null },
+                            themeMode = themeMode,
                             modifier = Modifier.padding(innerPadding),
                         )
                     }
@@ -98,6 +113,9 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        // The navigation bar scrims enableEdgeToEdge() uses by default.
+        private val LIGHT_SCRIM = Color.argb(0xe6, 0xFF, 0xFF, 0xFF)
+        private val DARK_SCRIM = Color.argb(0x80, 0x1b, 0x1b, 0x1b)
         private const val EXTRA_EDIT_PROFILE = "com.kwan.motioncontrol.extra.EDIT_PROFILE"
 
         /** Opens the profile editor for [profileId] from outside the app, e.g. the quick panel. */
@@ -159,6 +177,7 @@ private fun AppContent(
     /** A profile to open in the editor, on top of Home; [onEditRequestHandled] clears it. */
     editRequest: String?,
     onEditRequestHandled: () -> Unit,
+    themeMode: ThemeMode,
     modifier: Modifier = Modifier,
 ) {
     var backStack by rememberSaveable(stateSaver = backStackSaver) { mutableStateOf(listOf<Screen>(Screen.Home)) }
@@ -210,6 +229,8 @@ private fun AppContent(
             onOpenTestMode = { navigate(Screen.TestMode(null)) },
             onOpenTroubleshooting = { navigate(Screen.Troubleshooting) },
             tileAdded = tileAdded,
+            themeMode = themeMode,
+            onThemeModeChange = { mode -> scope.launch { settings.setThemeMode(mode) } },
             bubbleEnabled = bubbleEnabled,
             onBubbleEnabledChange = { enabled -> scope.launch { settings.setBubbleEnabled(enabled) } },
             modifier = modifier,

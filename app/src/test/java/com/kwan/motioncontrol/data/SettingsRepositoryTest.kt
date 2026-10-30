@@ -4,6 +4,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -47,5 +48,12 @@ class SettingsRepositoryTest {
         assertFalse(settings.onboardingDone.first())
         settings.setOnboardingDone()
         assertTrue(settings.onboardingDone.first())
+    }
+
+    @Test fun themeFollowsThePhoneByDefaultAndCanBeChanged() = runTest {
+        val settings = settings()
+        assertEquals(ThemeMode.SYSTEM, settings.themeMode.first())
+        settings.setThemeMode(ThemeMode.DARK)
+        assertEquals(ThemeMode.DARK, settings.themeMode.first())
     }
 }

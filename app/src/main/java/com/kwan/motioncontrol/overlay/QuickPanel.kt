@@ -48,10 +48,13 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.kwan.motioncontrol.data.AppRoute
 import com.kwan.motioncontrol.data.Profile
 import com.kwan.motioncontrol.data.ProfileRepository
+import com.kwan.motioncontrol.data.ThemeMode
 import com.kwan.motioncontrol.data.cameraOffText
 import com.kwan.motioncontrol.motion.MotionState
 import com.kwan.motioncontrol.motion.MotionStateStore
 import com.kwan.motioncontrol.ui.theme.MotionControlTheme
+import com.kwan.motioncontrol.ui.theme.isDark
+import kotlinx.coroutines.flow.Flow
 import kotlin.math.roundToInt
 
 /**
@@ -64,6 +67,8 @@ class QuickPanel(
     private val windowManager: WindowManager,
     private val store: MotionStateStore,
     private val profiles: ProfileRepository,
+    /** The app's theme choice, so the panel matches the app. */
+    private val themeMode: Flow<ThemeMode>,
     private val onPause: (Boolean) -> Unit,
     private val onStop: () -> Unit,
     private val onSetSensitivity: (Profile, Float) -> Unit,
@@ -78,7 +83,8 @@ class QuickPanel(
         val owner = OverlayOwner().also { this.owner = it }
         val compose = ComposeView(context).apply {
             setContent {
-                MotionControlTheme {
+                val mode by themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+                MotionControlTheme(darkTheme = mode.isDark()) {
                     val state by store.state.collectAsStateWithLifecycle()
                     val list by profiles.profiles.collectAsStateWithLifecycle(initialValue = emptyList())
                     val profileId = (state.route as? AppRoute.Use)?.profile?.id
