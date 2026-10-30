@@ -1,4 +1,4 @@
-# Handoff: Hands-Free Motion Control App (Android)
+# Spec: Hands-Free Motion Control App (Android)
 
 Working name: **AirScroll** (rename freely). Package placeholder: `com.example.airscroll`.
 
@@ -508,6 +508,8 @@ A "Motion Control" tile in the notification shade. Tap it to turn motion control
 ---
 
 ## 10. Build phases and acceptance criteria
+
+Which phases are finished or in progress is tracked in [PROGRESS.md](PROGRESS.md).
 
 | Phase | Deliverable | Done when |
 |---|---|---|
