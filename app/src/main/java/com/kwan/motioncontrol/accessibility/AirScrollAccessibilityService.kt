@@ -2,7 +2,9 @@ package com.kwan.motioncontrol.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Path
 import android.os.Build
@@ -70,6 +72,10 @@ class AirScrollAccessibilityService : AccessibilityService() {
         if (e.contentChangeTypes != AccessibilityEvent.CONTENT_CHANGE_TYPE_UNDEFINED) return
         val pkg = e.packageName?.toString() ?: return
         if (isIgnored(pkg)) return
+        if (!isAppScreen(pkg, e.className)) {
+            Log.d(TAG, "Ignored window over the open app: $pkg ${e.className}")
+            return
+        }
         if (pkg != ForegroundAppTracker.current.value) Log.d(TAG, "Foreground app: $pkg")
         ForegroundAppTracker.update(pkg)
     }
@@ -86,6 +92,30 @@ class AirScrollAccessibilityService : AccessibilityService() {
         // Re-read each time (window changes are infrequent) so a newly installed keyboard counts.
         return getSystemService(InputMethodManager::class.java)
             .enabledInputMethodList.any { it.packageName == pkg }
+    }
+
+    /**
+     * Whether the window is one of [pkg]'s activities rather than something it draws over another
+     * app. Seen on Xiaomi (HyperOS 3): opening TikTok shows the Video Toolbox handle
+     * (com.miui.securitycenter's VtbAssistantView), which made Security the open app and turned
+     * the camera off inside TikTok. Activities report their class name; overlays and dialogs don't.
+     * Packages we can't see (no launcher icon, see <queries>) can't be checked and count as apps.
+     */
+    private fun isAppScreen(pkg: String, className: CharSequence?): Boolean {
+        val pm = packageManager
+        if (className != null) {
+            try {
+                pm.getActivityInfo(ComponentName(pkg, className.toString()), 0)
+                return true
+            } catch (_: PackageManager.NameNotFoundException) {
+            }
+        }
+        return try {
+            pm.getApplicationInfo(pkg, 0)
+            false
+        } catch (_: PackageManager.NameNotFoundException) {
+            true
+        }
     }
 
     fun swipe(direction: Direction, durationMs: Long = 250): Boolean {
