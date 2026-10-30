@@ -71,6 +71,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val themeMode by settings.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
             val dark = themeMode.isDark()
+            val dynamicColor by settings.dynamicColor.collectAsStateWithLifecycle(initialValue = true)
             // Status and navigation bar icons follow the app's theme, not only the phone's.
             DisposableEffect(dark) {
                 enableEdgeToEdge(
@@ -79,7 +80,7 @@ class MainActivity : ComponentActivity() {
                 )
                 onDispose {}
             }
-            MotionControlTheme(darkTheme = dark) {
+            MotionControlTheme(darkTheme = dark, dynamicColor = dynamicColor) {
                 // Null while DataStore loads, so neither screen flashes.
                 val onboardingDone by settings.onboardingDone.collectAsStateWithLifecycle(initialValue = null)
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -99,6 +100,7 @@ class MainActivity : ComponentActivity() {
                             editRequest = editRequest,
                             onEditRequestHandled = { editRequest = null },
                             themeMode = themeMode,
+                            dynamicColor = dynamicColor,
                             modifier = Modifier.padding(innerPadding),
                         )
                     }
@@ -178,6 +180,7 @@ private fun AppContent(
     editRequest: String?,
     onEditRequestHandled: () -> Unit,
     themeMode: ThemeMode,
+    dynamicColor: Boolean,
     modifier: Modifier = Modifier,
 ) {
     var backStack by rememberSaveable(stateSaver = backStackSaver) { mutableStateOf(listOf<Screen>(Screen.Home)) }
@@ -231,6 +234,8 @@ private fun AppContent(
             tileAdded = tileAdded,
             themeMode = themeMode,
             onThemeModeChange = { mode -> scope.launch { settings.setThemeMode(mode) } },
+            dynamicColor = dynamicColor,
+            onDynamicColorChange = { enabled -> scope.launch { settings.setDynamicColor(enabled) } },
             bubbleEnabled = bubbleEnabled,
             onBubbleEnabledChange = { enabled -> scope.launch { settings.setBubbleEnabled(enabled) } },
             modifier = modifier,

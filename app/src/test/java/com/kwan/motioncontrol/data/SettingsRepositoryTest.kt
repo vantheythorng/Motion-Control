@@ -56,4 +56,11 @@ class SettingsRepositoryTest {
         settings.setThemeMode(ThemeMode.DARK)
         assertEquals(ThemeMode.DARK, settings.themeMode.first())
     }
+
+    @Test fun wallpaperColorsAreOnByDefaultAndCanBeTurnedOff() = runTest {
+        val settings = settings()
+        assertTrue(settings.dynamicColor.first())
+        settings.setDynamicColor(false)
+        assertFalse(settings.dynamicColor.first())
+    }
 }

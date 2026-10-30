@@ -69,6 +69,7 @@ class QuickPanel(
     private val profiles: ProfileRepository,
     /** The app's theme choice, so the panel matches the app. */
     private val themeMode: Flow<ThemeMode>,
+    private val dynamicColor: Flow<Boolean>,
     private val onPause: (Boolean) -> Unit,
     private val onStop: () -> Unit,
     private val onSetSensitivity: (Profile, Float) -> Unit,
@@ -84,7 +85,8 @@ class QuickPanel(
         val compose = ComposeView(context).apply {
             setContent {
                 val mode by themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
-                MotionControlTheme(darkTheme = mode.isDark()) {
+                val wallpaperColors by dynamicColor.collectAsStateWithLifecycle(initialValue = true)
+                MotionControlTheme(darkTheme = mode.isDark(), dynamicColor = wallpaperColors) {
                     val state by store.state.collectAsStateWithLifecycle()
                     val list by profiles.profiles.collectAsStateWithLifecycle(initialValue = emptyList())
                     val profileId = (state.route as? AppRoute.Use)?.profile?.id

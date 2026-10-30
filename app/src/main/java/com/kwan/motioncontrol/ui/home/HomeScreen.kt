@@ -85,6 +85,8 @@ fun HomeScreen(
     tileAdded: Boolean,
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
+    dynamicColor: Boolean,
+    onDynamicColorChange: (Boolean) -> Unit,
     bubbleEnabled: Boolean,
     onBubbleEnabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
@@ -98,7 +100,7 @@ fun HomeScreen(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Motion Assessment", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
-            ThemeMenu(themeMode, onThemeModeChange)
+            ThemeMenu(themeMode, onThemeModeChange, dynamicColor, onDynamicColorChange)
         }
         AccessibilitySection(accessibilityEnabled)
         HorizontalDivider()
@@ -127,13 +129,21 @@ fun HomeScreen(
     }
 }
 
-/** The ⋮ action on Home: light, dark, or follow the phone. */
+/**
+ * The theme action on Home, showing the current choice: light, dark, or follow the phone; plus
+ * wallpaper colors (dynamic color) on Android 12+.
+ */
 @Composable
-private fun ThemeMenu(mode: ThemeMode, onChange: (ThemeMode) -> Unit) {
+private fun ThemeMenu(
+    mode: ThemeMode,
+    onChange: (ThemeMode) -> Unit,
+    dynamicColor: Boolean,
+    onDynamicColorChange: (Boolean) -> Unit,
+) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
-            Icon(painterResource(R.drawable.ic_more_vert), contentDescription = "Theme")
+            Icon(painterResource(mode.icon), contentDescription = "Theme: ${mode.label}")
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
             Text(
@@ -152,6 +162,20 @@ private fun ThemeMenu(mode: ThemeMode, onChange: (ThemeMode) -> Unit) {
                     onClick = {
                         expanded = false
                         onChange(option)
+                    },
+                )
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                HorizontalDivider()
+                DropdownMenuItem(
+                    text = { Text("Wallpaper colors") },
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_palette), contentDescription = null) },
+                    trailingIcon = {
+                        if (dynamicColor) Icon(painterResource(R.drawable.ic_check), contentDescription = "On")
+                    },
+                    onClick = {
+                        expanded = false
+                        onDynamicColorChange(!dynamicColor)
                     },
                 )
             }
@@ -449,6 +473,8 @@ fun HomeScreenPreview() {
             tileAdded = false,
             themeMode = ThemeMode.SYSTEM,
             onThemeModeChange = {},
+            dynamicColor = true,
+            onDynamicColorChange = {},
             bubbleEnabled = true,
             onBubbleEnabledChange = {},
         )

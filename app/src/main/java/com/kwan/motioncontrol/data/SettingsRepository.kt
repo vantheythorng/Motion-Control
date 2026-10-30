@@ -53,6 +53,13 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[THEME_MODE] = mode.name }
     }
 
+    /** Colors from the wallpaper (Android 12+); off uses the app's own colors. Default on. */
+    val dynamicColor: Flow<Boolean> = dataStore.data.map { it[DYNAMIC_COLOR] ?: true }.distinctUntilChanged()
+
+    suspend fun setDynamicColor(enabled: Boolean) {
+        dataStore.edit { it[DYNAMIC_COLOR] = enabled }
+    }
+
     /** False until the user finishes (or skips through) the first-run onboarding. */
     val onboardingDone: Flow<Boolean> = dataStore.data.map { it[ONBOARDING_DONE] ?: false }.distinctUntilChanged()
 
@@ -81,6 +88,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         private val POSE_SPACE = stringPreferencesKey("pose_space")
         private val THEME_MODE = stringPreferencesKey("theme_mode")
+        private val DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
 
         fun onlyInSelectedApps(prefs: Preferences): Boolean = prefs[ONLY_IN_SELECTED_APPS] ?: true
     }

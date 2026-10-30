@@ -76,6 +76,7 @@ class BubbleOverlay(
         store = store,
         profiles = profiles,
         themeMode = settings.themeMode,
+        dynamicColor = settings.dynamicColor,
         onPause = { pause -> service { if (pause) MotionService.pause(context) else MotionService.resume(context) } },
         onStop = { service { MotionService.stop(context) } },
         onSetSensitivity = { profile, sensitivity -> scope.launch { profiles.upsert(profile.copy(sensitivity = sensitivity)) } },
