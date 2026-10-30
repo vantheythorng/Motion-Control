@@ -10,7 +10,7 @@ Status of the build phases in [SPEC.md](SPEC.md) §10. Update this file when a p
 | 4 | Per-app profiles, camera released in other apps | Done | `03051e7` |
 | 5 | Floating bubble, quick panel, bubble toggle | Done | `fdcfbbb` |
 | 6 | OEM guides, battery tuning | Built; 30-min test pending | `d8e6d8f` |
-| 7 | Custom poses | Built, checked on device; D6 open | – |
+| 7 | Custom poses | Built, checked on device; D6 open | `98351b7` |
 | 8 | Quick Settings tile | Done | `1a51faf` |
 
 Phases 1–4 were built before this file existed; their device checks weren't recorded.
