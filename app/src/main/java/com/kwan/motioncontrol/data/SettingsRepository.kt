@@ -22,10 +22,10 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
     }
 
     /**
-     * Whether the floating bubble shows (default on). Home's switch, the bubble's × target and
+     * Whether the floating bubble shows (default off; turned on from Home). Home's switch, the bubble's × target and
      * the notification's "Show bubble" action all write this one value.
      */
-    val bubbleEnabled: Flow<Boolean> = dataStore.data.map { it[BUBBLE_ENABLED] ?: true }.distinctUntilChanged()
+    val bubbleEnabled: Flow<Boolean> = dataStore.data.map { it[BUBBLE_ENABLED] ?: false }.distinctUntilChanged()
 
     suspend fun setBubbleEnabled(enabled: Boolean) {
         dataStore.edit { it[BUBBLE_ENABLED] = enabled }

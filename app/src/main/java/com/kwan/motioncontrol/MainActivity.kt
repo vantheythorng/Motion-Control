@@ -170,7 +170,7 @@ private fun AppContent(
     val motion by store.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val tileAdded by remember { TileStatus.added(context) }.collectAsStateWithLifecycle(initialValue = true)
-    val bubbleEnabled by settings.bubbleEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val bubbleEnabled by settings.bubbleEnabled.collectAsStateWithLifecycle(initialValue = false)
     val debug by store.debug.collectAsStateWithLifecycle()
     // Same resolution the service uses, so Home is right even while motion control is off.
     val route = routing?.let { ProfileResolver.resolve(lastApp, connected != null, it) }

@@ -279,6 +279,7 @@ private fun buildNotification(paused: Boolean, bubbleOn: Boolean): Notification 
 - Snaps to the nearer side; the side and relative height are remembered (`bubble_position` SharedPreferences) and kept across rotation.
 - The quick panel (`overlay/QuickPanel`) is a Compose overlay window, not an activity, so the app underneath keeps playing. It has Pause/Resume, Stop, the profile in use with Edit (opens the editor in `MainActivity`), and the profile's sensitivity. Tap outside or Back closes it.
 - The toast says "Turn it back on in Motion Control", where the switch is on Home.
+- **Off by default** (user decision, 2026-10-30): the user turns it on from Home or the notification's "Show bubble". The plan below defaulted it to on.
 
 Behavior (original plan):
 - Status colors: grey = paused or camera off, green = hand detected, brief flash = gesture fired.

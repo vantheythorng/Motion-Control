@@ -70,7 +70,7 @@ class MotionService : LifecycleService() {
     private var appliedProfile: Profile? = null
     private var notificationText: String? = null
     /** The notification offers "Show bubble" only while the bubble is off. */
-    private var bubbleEnabled = true
+    private var bubbleEnabled = false
     private var notificationBubbleEnabled: Boolean? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())

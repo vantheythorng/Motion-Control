@@ -62,7 +62,7 @@ Done 2026-10-30 (`fdcfbbb`). Unit tests, build and lint pass; checked on device.
 - What was built is described in SPEC.md §5.5 ("As built").
 
 Checklist:
-- [x] `bubble_enabled` setting (default on) in `SettingsRepository`
+- [x] `bubble_enabled` setting in `SettingsRepository`; off by default (user decision, 2026-10-30)
 - [x] Bubble overlay: status colors, drag, snap to edge, hidden on the lock screen
 - [x] "×" drop target that turns the bubble off, with a one-time toast
 - [x] Quick panel: pause/resume, stop, active profile with an edit shortcut, sensitivity slider

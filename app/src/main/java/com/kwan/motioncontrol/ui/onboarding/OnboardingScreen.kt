@@ -157,7 +157,8 @@ private fun BatteryStep(onSkip: () -> Unit) {
 @Composable
 private fun Finished(onFinish: () -> Unit) {
     Title("You're set")
-    Body("Tap Start motion control on the Home screen. You can also start it from the floating bubble or the Quick Settings tile.")
+    Body("Tap Start motion control on the Home screen. You can also start it from the Quick Settings tile.")
+    Body("For quick controls over other apps, turn on the floating bubble on the Home screen.")
     Body("Troubleshooting on the Home screen checks all of this again, any time.")
     Button(onClick = onFinish, modifier = Modifier.fillMaxWidth()) { Text("Done") }
 }

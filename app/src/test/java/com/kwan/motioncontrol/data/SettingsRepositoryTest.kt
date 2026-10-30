@@ -26,11 +26,11 @@ class SettingsRepositoryTest {
         assertFalse(settings.onlyInSelectedApps.first())
     }
 
-    @Test fun bubbleIsOnByDefaultAndCanBeTurnedOff() = runTest {
+    @Test fun bubbleIsOffByDefaultAndCanBeTurnedOn() = runTest {
         val settings = settings()
-        assertTrue(settings.bubbleEnabled.first())
-        settings.setBubbleEnabled(false)
         assertFalse(settings.bubbleEnabled.first())
+        settings.setBubbleEnabled(true)
+        assertTrue(settings.bubbleEnabled.first())
     }
 
     @Test fun hidingTheBubbleTurnsItOffAndAsksForTheHintOnlyOnce() = runTest {
