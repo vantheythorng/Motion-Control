@@ -35,6 +35,9 @@ class ProfileResolverTest {
         ProfileResolver.resolve(tiktok, accessibilityOn = false, routing(onlySelected = false)),
     )
 
+    @Test fun shortReasonsFitATileSubtitle() =
+        OffReason.entries.forEach { assert(shortOffText(it).length <= 20) { shortOffText(it) } }
+
     @Test fun duplicateAssignmentUsesTheFirstProfile() {
         val other = Profile(id = "other", name = "Other", packages = setOf(tiktok))
         val route = ProfileResolver.resolve(tiktok, true, routing(profiles = DefaultProfiles.all + other))

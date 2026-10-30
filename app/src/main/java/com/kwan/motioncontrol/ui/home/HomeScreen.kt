@@ -1,11 +1,15 @@
 package com.kwan.motioncontrol.ui.home
 
 import android.Manifest
+import android.app.StatusBarManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.graphics.drawable.Icon
 import android.provider.Settings
+import androidx.annotation.RequiresApi
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -50,6 +54,8 @@ import com.kwan.motioncontrol.motion.DebugFrame
 import com.kwan.motioncontrol.motion.MotionService
 import com.kwan.motioncontrol.motion.MotionState
 import com.kwan.motioncontrol.motion.ProfileTuning
+import com.kwan.motioncontrol.system.TileStatus
+import com.kwan.motioncontrol.tile.MotionTileService
 import com.kwan.motioncontrol.ui.common.ChoiceDropdown
 import com.kwan.motioncontrol.ui.theme.MotionControlTheme
 
@@ -70,6 +76,8 @@ fun HomeScreen(
     onAddAppToProfile: (profileId: String, packageName: String) -> Unit,
     onOpenProfiles: () -> Unit,
     onOpenTestMode: () -> Unit,
+    /** Whether the Quick Settings tile is already in the user's tiles. */
+    tileAdded: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -90,6 +98,10 @@ fun HomeScreen(
             profiles, defaultProfile, useInAllApps, onUseInAllAppsChange, onSelectDefault, onEditProfile,
             onOpenProfiles,
         )
+        if (!tileAdded) {
+            HorizontalDivider()
+            QuickSettingsSection()
+        }
         HorizontalDivider()
         OutlinedButton(onClick = onOpenTestMode, modifier = Modifier.fillMaxWidth()) {
             Text("Test mode (live hand view, no actions)")
@@ -253,6 +265,42 @@ private fun AppProfileSection(
     }
 }
 
+/** Offers the Quick Settings tile (start/stop from the notification shade) until it's added. */
+@Composable
+private fun QuickSettingsSection() {
+    val context = LocalContext.current
+    Text("Quick Settings tile", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Turn motion control on and off from the notification shade, without opening this app.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        OutlinedButton(onClick = { requestAddTile(context) }, modifier = Modifier.fillMaxWidth()) {
+            Text("Add to Quick Settings")
+        }
+    } else {
+        Text(
+            "To add it: open Quick Settings, tap the edit (pencil) button and drag Motion Control in.",
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private fun requestAddTile(context: Context) {
+    context.getSystemService(StatusBarManager::class.java).requestAddTileService(
+        ComponentName(context, MotionTileService::class.java),
+        context.getString(R.string.app_name),
+        Icon.createWithResource(context, R.drawable.ic_motion),
+        ContextCompat.getMainExecutor(context),
+    ) { result ->
+        // The system shows its own prompt; "already added" also means the button can go.
+        if (result == StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ADDED ||
+            result == StatusBarManager.TILE_ADD_REQUEST_RESULT_TILE_ALREADY_ADDED
+        ) TileStatus.setAdded(context, true)
+    }
+}
+
 /** What happens in apps without their own profile. */
 @Composable
 private fun OtherAppsSection(
@@ -312,6 +360,7 @@ fun HomeScreenPreview() {
             onAddAppToProfile = { _, _ -> },
             onOpenProfiles = {},
             onOpenTestMode = {},
+            tileAdded = false,
         )
     }
 }

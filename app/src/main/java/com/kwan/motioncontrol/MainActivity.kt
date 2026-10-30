@@ -11,11 +11,13 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kwan.motioncontrol.accessibility.ActionDispatcher
 import com.kwan.motioncontrol.accessibility.AirScrollAccessibilityService
@@ -24,6 +26,7 @@ import com.kwan.motioncontrol.data.ProfileRepository
 import com.kwan.motioncontrol.data.ProfileResolver
 import com.kwan.motioncontrol.data.SettingsRepository
 import com.kwan.motioncontrol.system.InstalledApps
+import com.kwan.motioncontrol.system.TileStatus
 import com.kwan.motioncontrol.ui.profiles.AppPickerScreen
 import com.kwan.motioncontrol.motion.MotionStateStore
 import com.kwan.motioncontrol.ui.home.HomeScreen
@@ -117,6 +120,8 @@ private fun AppContent(
     val connected by AirScrollAccessibilityService.instance.collectAsStateWithLifecycle()
     val lastApp by ForegroundAppTracker.current.collectAsStateWithLifecycle()
     val motion by store.state.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val tileAdded by remember { TileStatus.added(context) }.collectAsStateWithLifecycle(initialValue = true)
     val debug by store.debug.collectAsStateWithLifecycle()
     // Same resolution the service uses, so Home is right even while motion control is off.
     val route = routing?.let { ProfileResolver.resolve(lastApp, connected != null, it) }
@@ -137,6 +142,7 @@ private fun AppContent(
             onAddAppToProfile = { id, pkg -> scope.launch { repository.assignApps(id, setOf(pkg)) } },
             onOpenProfiles = { navigate(Screen.Profiles) },
             onOpenTestMode = { navigate(Screen.TestMode(null)) },
+            tileAdded = tileAdded,
             modifier = modifier,
         )
         Screen.Profiles -> ProfilesScreen(

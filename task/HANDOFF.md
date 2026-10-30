@@ -381,11 +381,12 @@ A "Motion Control" tile in the notification shade. Tap it to turn motion control
 
 **Starting from the tile.**
 - Android 14+ only lets an app start a **camera** foreground service while one of its activities is visible. A tile tap doesn't count, so `TileService` must not call `startForegroundService` itself.
-- Instead the tile calls `startActivityAndCollapse(PendingIntent)` for `ArmCameraActivity`. On API 34+ only the `PendingIntent` overload is allowed. `ArmCameraActivity` is a translucent, no-UI activity, shared with the Phase 5 bubble. It:
-  - closes the shade
+- Instead the tile calls `startActivityAndCollapse(PendingIntent)` for `ArmCameraActivity`. On API 34+ only the `PendingIntent` overload is allowed. `ArmCameraActivity` is a translucent, no-UI activity, shared with the Phase 5 bubble, declared with `taskAffinity=""`, `excludeFromRecents` and `noHistory`. It:
   - starts `MotionService` while visible
-  - calls `finish()` at once, so the user stays in the app they were using
-- **Missing setup:** if the camera permission or the accessibility service is missing, the activity opens Motion Control's Home screen instead, so the user can fix it there.
+  - **stays up until the service reports it's running**, or an error, or about 1.5 s. Finishing at once could let `startForeground()` run after the activity is gone, and newer Android re-checks foreground status there.
+  - then finishes, so the user stays in the app they were using
+  - opens Motion Control on an error or a timeout
+- **Missing setup:** if the camera permission or the accessibility service is missing, the tile opens Motion Control's Home screen directly, in its normal task, so the user can fix it there. "Accessibility enabled" is read from the system setting, not the bound service, which isn't connected yet in a cold process.
 
 **Stopping** needs no visible UI: the tile sends `MotionService.stop()` directly.
 
@@ -402,10 +403,15 @@ A "Motion Control" tile in the notification shade. Tap it to turn motion control
 - Long-press opens the app (`ACTION_QS_TILE_PREFERENCES` on `MainActivity`).
 
 **Adding the tile.** On Android 13+ Home offers "Add to Quick Settings", using `StatusBarManager.requestAddTileService`; the system shows its own confirmation. On Android 10–12 Home explains how to add it by editing the tiles.
+- Home hides this once the tile is added. The flag:
+  - lives in its own SharedPreferences file, excluded from backup, so a restored phone without the tile still sees the offer
+  - is set by `onTileAdded` and repaired on every `onStartListening`, e.g. after "clear data"
+  - is cleared by `onTileRemoved`
 
 **Manifest.**
 - The `TileService` is exported, requires `android.permission.BIND_QUICK_SETTINGS_TILE`, and declares an intent filter for `android.service.quicksettings.action.QS_TILE`.
-- It uses `android.service.quicksettings.ACTIVE_TILE` meta-data, so the app updates the tile with `TileService.requestListeningState` when the state changes.
+- **Not** an active tile (no `ACTIVE_TILE` meta-data). The system binds it whenever the shade opens, and while it's listening the tile follows `MotionStateStore` live. A fresh process correctly shows Off.
+- `MainActivity` handles `android.service.quicksettings.action.QS_TILE_PREFERENCES`, so a long-press opens the app.
 - `ArmCameraActivity` is declared as in §6.
 
 ---
@@ -542,4 +548,5 @@ Build a debug overlay (landmarks + live dx/dy + state machine state) early in Ph
 - **D4 (DI):** Koin.
 - **Default bindings:** FIST_HOLD → TapCenter (play/pause), not TogglePause. A gesture that pauses gestures blocked every other gesture; pausing is done from the notification. TogglePause stays available in the profile editor, with a warning.
 - **Working range:** hands are only accepted within a distance range set per profile in the editor (default 30 cm – 1 m, adjustable 10 cm – 2 m), estimated from MediaPipe world landmarks and the camera focal length.
+- **D9 (Quick Settings tile):** the tile starts/stops motion control; pause stays in the notification.
 - **Active profile (Phase 3):** chosen on the Home screen until Phase 4 adds per-app switching.

@@ -47,3 +47,10 @@ fun cameraOffText(reason: OffReason, appLabel: String?): String = when (reason) 
     OffReason.NO_APP_YET -> "Camera off until you open an app with a profile."
     OffReason.NO_PROFILE_FOR_APP -> "Camera off: no profile for ${appLabel ?: "this app"}."
 }
+
+/** Short form of [cameraOffText] for tight spaces such as the Quick Settings tile subtitle. */
+fun shortOffText(reason: OffReason): String = when (reason) {
+    OffReason.ACCESSIBILITY_OFF -> "Accessibility off"
+    OffReason.NO_APP_YET -> "No app yet"
+    OffReason.NO_PROFILE_FOR_APP -> "No profile here"
+}
