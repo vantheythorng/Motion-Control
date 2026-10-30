@@ -23,3 +23,11 @@ local.properties
 
 # Signed APKs/bundles from Android Studio's "Generate Signed App Bundle / APK".
 /app/release/
+
+# Personal Android Studio state (device list sorting, last-selected run target)
+/.idea/deviceManager.xml
+/.idea/deploymentTargetSelector.xml
+
+# Built apps never belong in the repo
+*.apk
+*.aab
