@@ -36,8 +36,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kwan.motioncontrol.data.DeviceAction
 import com.kwan.motioncontrol.data.Direction
+import com.kwan.motioncontrol.data.CustomPose
+import com.kwan.motioncontrol.data.PoseSpace
 import com.kwan.motioncontrol.data.Profile
 import com.kwan.motioncontrol.data.label
+import com.kwan.motioncontrol.motion.CustomPoses
 import com.kwan.motioncontrol.motion.DebugFrame
 import com.kwan.motioncontrol.motion.GestureEngine
 import com.kwan.motioncontrol.motion.MotionStateStore
@@ -62,6 +65,9 @@ import kotlinx.coroutines.launch
 @Composable
 fun TestModeScreen(
     profile: Profile,
+    /** The user's custom poses and the space they're matched in, tested like built-in gestures. */
+    customPoses: List<CustomPose>,
+    poseSpace: PoseSpace,
     store: MotionStateStore,
     accessibilityEnabled: Boolean,
     onDispatch: (DeviceAction) -> Boolean,
@@ -90,11 +96,17 @@ fun TestModeScreen(
         GestureEngine(
             bindings = profile.bindings,
             config = ProfileTuning.configFor(profile),
-            onIgnored = { motion, reason -> wouldFire.value = "${motion.label}: ignored ($reason)" },
-            onAction = { motion, action -> wouldFire.value = "${motion.label} → ${action.label}" },
+            onIgnored = { gesture, reason -> wouldFire.value = "${gesture.label}: ignored ($reason)" },
+            onAction = { gesture, action -> wouldFire.value = "${gesture.label} → ${action.label}" },
         )
     }
-    LaunchedEffect(profile) { engine.applyProfile(profile.bindings, ProfileTuning.configFor(profile)) }
+    LaunchedEffect(profile, customPoses, poseSpace) {
+        engine.applyProfile(
+            profile.bindings,
+            ProfileTuning.configFor(profile),
+            CustomPoses(customPoses, profile.customBindings, poseSpace),
+        )
+    }
 
     val tracker = remember {
         var lastAt = 0L

@@ -31,6 +31,7 @@ import com.kwan.motioncontrol.R
 import com.kwan.motioncontrol.system.OemGuides
 import com.kwan.motioncontrol.motion.DebugFrame
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /** Title row with a Back button, for screens below Home. */
 @Composable
@@ -129,6 +130,14 @@ fun DebugReadout(debug: DebugFrame?, delegate: String?, modifier: Modifier = Mod
         Text("Hand: ${if (s?.handPresent == true) "yes" else "no"}", style = style)
         Text("Pose: ${s?.pose ?: "-"} (${(s?.poseScore ?: 0f).signed()})", style = style)
         Text("Acting on: ${s?.activePose ?: "-"}", style = style)
+        s?.nearestCustom?.let { near ->
+            Text(
+                "Custom pose: ${near.pose.name} ${(near.score * 100).roundToInt()} %" +
+                    String.format(Locale.US, " (d %.2f / %.2f)", near.distance, near.threshold),
+                style = style,
+                color = if (near.withinThreshold) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+            )
+        }
         Text("dx: ${(s?.dx ?: 0f).signed()}  dy: ${(s?.dy ?: 0f).signed()}", style = style)
         Text(
             "Distance: " + (s?.distanceCm?.let { String.format(Locale.US, "%.0f cm", it) } ?: "-") +

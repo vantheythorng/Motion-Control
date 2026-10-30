@@ -2,7 +2,9 @@ package com.kwan.motioncontrol.data
 
 enum class Motion {
     AIR_SWIPE_UP, AIR_SWIPE_DOWN, AIR_SWIPE_LEFT, AIR_SWIPE_RIGHT,
-    OPEN_PALM_HOLD, THUMBS_UP, THUMBS_DOWN, FIST_HOLD, VICTORY, POINTING_UP,
+    OPEN_PALM_HOLD, THUMBS_UP, THUMBS_DOWN, FIST_HOLD,
+    // VICTORY and POINTING_UP were removed (2026-10-30); stored bindings for them are dropped when
+    // profiles load (see BindingsSerializer).
 }
 
 val Motion.label: String
@@ -15,6 +17,4 @@ val Motion.label: String
         Motion.THUMBS_UP -> "Thumbs up"
         Motion.THUMBS_DOWN -> "Thumbs down"
         Motion.FIST_HOLD -> "Fist (hold)"
-        Motion.VICTORY -> "Victory ✌"
-        Motion.POINTING_UP -> "Pointing up"
     }

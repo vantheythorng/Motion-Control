@@ -4,6 +4,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -29,6 +30,15 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
 
     suspend fun setBubbleEnabled(enabled: Boolean) {
         dataStore.edit { it[BUBBLE_ENABLED] = enabled }
+    }
+
+    /** Which landmarks custom poses are matched on (D6); switchable on the Custom poses screen. */
+    val poseSpace: Flow<PoseSpace> = dataStore.data
+        .map { prefs -> PoseSpace.entries.firstOrNull { it.name == prefs[POSE_SPACE] } ?: PoseSpace.IMAGE }
+        .distinctUntilChanged()
+
+    suspend fun setPoseSpace(space: PoseSpace) {
+        dataStore.edit { it[POSE_SPACE] = space.name }
     }
 
     /** False until the user finishes (or skips through) the first-run onboarding. */
@@ -57,6 +67,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val BUBBLE_ENABLED = booleanPreferencesKey("bubble_enabled")
         private val BUBBLE_HIDDEN_HINT_SHOWN = booleanPreferencesKey("bubble_hidden_hint_shown")
         private val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+        private val POSE_SPACE = stringPreferencesKey("pose_space")
 
         fun onlyInSelectedApps(prefs: Preferences): Boolean = prefs[ONLY_IN_SELECTED_APPS] ?: true
     }

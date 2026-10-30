@@ -1,6 +1,12 @@
 package com.kwan.motioncontrol.data
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.descriptors.SerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 
 /** A named set of motion → action bindings plus tuning. Stored as JSON by [ProfileRepository]. */
 @Serializable
@@ -9,6 +15,7 @@ data class Profile(
     val name: String,
     /** Apps this profile is for; empty = global/default profile. Used from Phase 4. */
     val packages: Set<String> = emptySet(),
+    @Serializable(with = BindingsSerializer::class)
     val bindings: Map<Motion, DeviceAction> = emptyMap(),
     /** 0..1; higher = smaller motions and lower confidence are accepted. See ProfileTuning. */
     val sensitivity: Float = 0.5f,
@@ -19,12 +26,23 @@ data class Profile(
      */
     val minDistanceCm: Float = DEFAULT_MIN_DISTANCE_CM,
     val maxDistanceCm: Float = DEFAULT_MAX_DISTANCE_CM,
+    /**
+     * Actions for the user's custom poses, by pose id (D5: poses are shared, each profile binds
+     * them). Kept apart from [bindings] so profiles saved before custom poses load unchanged.
+     */
+    val customBindings: Map<String, DeviceAction> = emptyMap(),
     /** Schema version of this stored entry, for future migrations. */
     val version: Int = 1,
 ) {
     /** Binding [motion] to [DeviceAction.None] removes it, so "None" never reaches the engine. */
     fun withBinding(motion: Motion, action: DeviceAction): Profile = copy(
         bindings = if (action == DeviceAction.None) bindings - motion else bindings + (motion to action),
+    )
+
+    /** Like [withBinding], for a custom pose. */
+    fun withCustomBinding(poseId: String, action: DeviceAction): Profile = copy(
+        customBindings = if (action == DeviceAction.None) customBindings - poseId
+        else customBindings + (poseId to action),
     )
 
     companion object {
@@ -73,4 +91,21 @@ object DefaultProfiles {
     )
 
     val all = listOf(shortVideo, global)
+}
+
+/**
+ * Bindings stored by motion name. Names this version doesn't know (motions that were removed, like
+ * VICTORY) are dropped, instead of making the whole profile unreadable.
+ */
+object BindingsSerializer : KSerializer<Map<Motion, DeviceAction>> {
+    private val stored = MapSerializer(String.serializer(), DeviceAction.serializer())
+    override val descriptor: SerialDescriptor = stored.descriptor
+
+    override fun serialize(encoder: Encoder, value: Map<Motion, DeviceAction>) =
+        stored.serialize(encoder, value.mapKeys { it.key.name })
+
+    override fun deserialize(decoder: Decoder): Map<Motion, DeviceAction> =
+        stored.deserialize(decoder).mapNotNull { (name, action) ->
+            Motion.entries.firstOrNull { it.name == name }?.let { it to action }
+        }.toMap()
 }

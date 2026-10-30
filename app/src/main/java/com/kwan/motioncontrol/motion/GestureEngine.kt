@@ -1,10 +1,30 @@
 package com.kwan.motioncontrol.motion
 
+import com.kwan.motioncontrol.data.CustomPose
 import com.kwan.motioncontrol.data.DeviceAction
+import com.kwan.motioncontrol.data.Gesture
 import com.kwan.motioncontrol.data.Motion
+import com.kwan.motioncontrol.data.PoseSpace
+import com.kwan.motioncontrol.data.PoseTrigger
 
 /**
- * Turns per-frame hand observations into [Motion]s and emits the bound [DeviceAction].
+ * The user's custom poses, matched in [space], and the current profile's actions for them. Only
+ * the poses the profile binds are matched: a pose used in one app must not hide a similar built-in
+ * gesture in another.
+ */
+class CustomPoses(poses: List<CustomPose>, bindings: Map<String, DeviceAction>, space: PoseSpace) {
+    val bindings: Map<String, DeviceAction> = bindings.filterValues { it != DeviceAction.None }
+    val matcher = PoseMatcher(poses.filter { it.id in this.bindings }, space)
+    val byId: Map<String, CustomPose> = poses.associateBy { it.id }
+
+    companion object {
+        val NONE = CustomPoses(emptyList(), emptyMap(), PoseSpace.IMAGE)
+    }
+}
+
+/**
+ * Turns per-frame hand observations into [Gesture]s (built-in motions and the user's custom poses)
+ * and emits the bound [DeviceAction].
  *
  * State machine: IDLE → ARMED → TRIGGERED → COOLDOWN → IDLE. Pure Kotlin so it can be unit-tested;
  * [onFrame] must be called from a single thread. [applyProfile] may be called from any thread.
@@ -12,10 +32,11 @@ import com.kwan.motioncontrol.data.Motion
 class GestureEngine(
     bindings: Map<Motion, DeviceAction>,
     config: Config = Config(),
+    customPoses: CustomPoses = CustomPoses.NONE,
     private val isPaused: () -> Boolean = { false },
-    /** Called when a motion is recognized but not acted on, with the reason (for diagnostics). */
-    private val onIgnored: (Motion, String) -> Unit = { _, _ -> },
-    private val onAction: (Motion, DeviceAction) -> Unit,
+    /** Called when a gesture is recognized but not acted on, with the reason (for diagnostics). */
+    private val onIgnored: (Gesture, String) -> Unit = { _, _ -> },
+    private val onAction: (Gesture, DeviceAction) -> Unit,
 ) {
     enum class State { IDLE, ARMED, TRIGGERED, COOLDOWN }
 
@@ -24,7 +45,7 @@ class GestureEngine(
          *  shorter than [handLostMs] don't reset the count. */
         val armFrames: Int = 3,
         val minConfidence: Float = 0.6f,
-        /** OPEN_PALM_HOLD / FIST_HOLD must be held still this long. */
+        /** OPEN_PALM_HOLD / FIST_HOLD (and custom Hold poses) must be held still this long. */
         val holdMs: Long = 1000,
         /** Other poses (thumbs up, victory, …) must be stable this long. */
         val poseMs: Long = 300,
@@ -50,26 +71,29 @@ class GestureEngine(
         val handPresent: Boolean,
         val pose: String?,
         val poseScore: Float,
-        /** The smoothed pose the engine acts on (may come from the landmark shape check). */
+        /** The smoothed pose the engine acts on (may come from the landmark shape check or a custom pose). */
         val activePose: String?,
+        /** The closest custom pose this frame, matched or not (for Test mode and tuning). */
+        val nearestCustom: PoseMatcher.Match?,
         val distanceCm: Float?,
         /** False when a hand is visible but outside the working distance range. */
         val inRange: Boolean,
         val dx: Float,
         val dy: Float,
-        val lastMotion: Motion?,
+        val lastGesture: Gesture?,
     )
 
     private data class TimedPoint(val x: Float, val y: Float, val t: Long)
 
-    /** Bindings and config are swapped together, so a frame never sees half of a new profile. */
-    private class Tuning(val bindings: Map<Motion, DeviceAction>, val config: Config)
+    /** Bindings, config and custom poses are swapped together, so a frame never sees half of a new profile. */
+    private class Tuning(val bindings: Map<Motion, DeviceAction>, val config: Config, val custom: CustomPoses)
 
-    @Volatile private var tuning = Tuning(bindings.withoutNone(), config)
+    @Volatile private var tuning = Tuning(bindings.withoutNone(), config, customPoses)
 
     // Snapshot of [tuning] for the frame being processed; only touched on the frame thread.
     private var bindings = tuning.bindings
     private var config = tuning.config
+    private var custom = tuning.custom
 
     private val swipe = AirSwipeDetector(config.swipeMinTravel, config.swipeDominance)
     private val palmTrail = ArrayDeque<TimedPoint>()
@@ -88,7 +112,8 @@ class GestureEngine(
     /** When the spent pose was last seen; it's released after [Config.releaseMs] without it. */
     private var spentSeenAt = 0L
     private var lastFireAt = 0L
-    private var lastMotion: Motion? = null
+    private var lastGesture: Gesture? = null
+    private var nearestCustom: PoseMatcher.Match? = null
 
     @Volatile private var resetRequested = false
 
@@ -100,9 +125,12 @@ class GestureEngine(
         resetRequested = true
     }
 
-    /** Switches to a new profile's bindings and tuning without resetting the gesture state. */
-    fun applyProfile(bindings: Map<Motion, DeviceAction>, config: Config) {
-        tuning = Tuning(bindings.withoutNone(), config)
+    /**
+     * Switches to a new profile's bindings and tuning, or new custom poses, without resetting the
+     * gesture state.
+     */
+    fun applyProfile(bindings: Map<Motion, DeviceAction>, config: Config, customPoses: CustomPoses = CustomPoses.NONE) {
+        tuning = Tuning(bindings.withoutNone(), config, customPoses)
     }
 
     fun onFrame(frame: HandFrame): Snapshot {
@@ -114,6 +142,7 @@ class GestureEngine(
         val current = tuning
         bindings = current.bindings
         config = current.config
+        custom = current.custom
         swipe.minTravel = config.swipeMinTravel
         swipe.dominance = config.swipeDominance
 
@@ -121,6 +150,7 @@ class GestureEngine(
         if (state == State.TRIGGERED) state = State.COOLDOWN
         if (state == State.COOLDOWN && now - lastFireAt >= config.cooldownMs) state = State.IDLE
 
+        nearestCustom = null
         val hand = frame.landmarks?.takeIf { inRange(frame.distanceCm) }
         if (hand == null) {
             if (now - lastHandAt > config.handLostMs) onHandLost()
@@ -130,7 +160,9 @@ class GestureEngine(
         handFrames++
         if (state == State.IDLE && handFrames >= config.armFrames) state = State.ARMED
 
-        val label = frame.gesture?.takeIf { frame.gestureScore >= config.minConfidence && it in POSES }
+        // A confident match of a pose this profile uses beats the built-in classifier (SPEC §5.7).
+        val label = customLabel(frame)
+            ?: frame.gesture?.takeIf { frame.gestureScore >= config.minConfidence && it in POSES }
             ?: OPEN_PALM.takeIf { HandShape.isOpenPalm(hand) }
         updatePose(label, now)
         if (spentPose != null) {
@@ -148,16 +180,36 @@ class GestureEngine(
         return snapshot(frame, handPresent = true)
     }
 
+    /** "custom:<id>" when the frame shows one of the user's poses, else null. */
+    private fun customLabel(frame: HandFrame): String? {
+        if (custom.matcher.isEmpty) return null
+        val fingerprint = PoseFingerprint.of(frame, custom.matcher.space) ?: return null
+        val ranked = custom.matcher.rank(fingerprint)
+        nearestCustom = ranked.firstOrNull()
+        return custom.matcher.pick(ranked)?.let { CUSTOM_PREFIX + it.pose.id }
+    }
+
     private fun detect(palm: HandPoint, now: Long) {
         swipe.onFrame(palm.x, palm.y, now)?.let { motion ->
             spend(pose, now)
-            fire(motion, now)
+            fire(Gesture.BuiltIn(motion), now)
             return
         }
         val label = pose ?: return
         if (label == spentPose) return
-        val motion = POSES.getValue(label)
-        if (motion in HOLDS) {
+        val gesture: Gesture
+        val hold: Boolean
+        if (label.startsWith(CUSTOM_PREFIX)) {
+            // Deleted while being held: nothing to do.
+            val customPose = custom.byId[label.removePrefix(CUSTOM_PREFIX)] ?: return
+            gesture = Gesture.Custom(customPose.id, customPose.name)
+            hold = customPose.trigger == PoseTrigger.HOLD
+        } else {
+            val motion = POSES.getValue(label)
+            gesture = Gesture.BuiltIn(motion)
+            hold = motion in HOLDS
+        }
+        if (hold) {
             if (!isStill()) {
                 poseSince = now
                 return
@@ -167,7 +219,7 @@ class GestureEngine(
             return
         }
         // Spend even when it wasn't acted on (unbound or paused), so a held pose is reported once.
-        fire(motion, now)
+        fire(gesture, now)
         spend(label, now)
     }
 
@@ -191,21 +243,24 @@ class GestureEngine(
         spentSeenAt = now
     }
 
-    private fun fire(motion: Motion, now: Long): Boolean {
-        val action = bindings[motion]
+    private fun fire(gesture: Gesture, now: Long): Boolean {
+        val action = when (gesture) {
+            is Gesture.BuiltIn -> bindings[gesture.motion]
+            is Gesture.Custom -> custom.bindings[gesture.id]
+        }
         if (action == null) {
-            onIgnored(motion, "no binding")
+            onIgnored(gesture, "no binding")
             return false
         }
         if (isPaused() && action != DeviceAction.TogglePause) {
-            onIgnored(motion, "paused")
+            onIgnored(gesture, "paused")
             return false
         }
         state = State.TRIGGERED
         lastFireAt = now
-        lastMotion = motion
+        lastGesture = gesture
         swipe.reset()
-        onAction(motion, action)
+        onAction(gesture, action)
         return true
     }
 
@@ -235,32 +290,39 @@ class GestureEngine(
         handPresent = handPresent,
         pose = frame.gesture,
         poseScore = frame.gestureScore,
-        activePose = pose,
+        // Custom poses by name rather than id.
+        activePose = pose?.let { label ->
+            if (label.startsWith(CUSTOM_PREFIX)) custom.byId[label.removePrefix(CUSTOM_PREFIX)]?.name else label
+        },
+        nearestCustom = nearestCustom,
         distanceCm = frame.distanceCm,
         inRange = inRange(frame.distanceCm),
         dx = swipe.dx,
         dy = swipe.dy,
-        lastMotion = lastMotion,
+        lastGesture = lastGesture,
     )
 
-    private companion object {
+    companion object {
+        /** The built-in motion MediaPipe's pose [label] stands for (e.g. "Thumb_Up"), or null. */
+        fun motionForPose(label: String): Motion? = POSES[label]
+
         /** "None" means unbound: as a binding it would start a cooldown and swallow the gesture. */
-        fun Map<Motion, DeviceAction>.withoutNone() = filterValues { it != DeviceAction.None }
+        private fun Map<Motion, DeviceAction>.withoutNone() = filterValues { it != DeviceAction.None }
 
         /** MIDDLE_FINGER_MCP: stable for both open and closed hands. */
-        const val PALM_CENTER = 9
-        const val STILL_WINDOW_MS = 300L
+        private const val PALM_CENTER = 9
+        private const val STILL_WINDOW_MS = 300L
 
-        const val OPEN_PALM = "Open_Palm"
+        private const val OPEN_PALM = "Open_Palm"
+        /** Pose labels for custom poses; MediaPipe's own labels never start with this. */
+        private const val CUSTOM_PREFIX = "custom:"
 
-        val POSES = mapOf(
+        private val POSES = mapOf(
             OPEN_PALM to Motion.OPEN_PALM_HOLD,
             "Closed_Fist" to Motion.FIST_HOLD,
             "Thumb_Up" to Motion.THUMBS_UP,
             "Thumb_Down" to Motion.THUMBS_DOWN,
-            "Victory" to Motion.VICTORY,
-            "Pointing_Up" to Motion.POINTING_UP,
         )
-        val HOLDS = setOf(Motion.OPEN_PALM_HOLD, Motion.FIST_HOLD)
+        private val HOLDS = setOf(Motion.OPEN_PALM_HOLD, Motion.FIST_HOLD)
     }
 }

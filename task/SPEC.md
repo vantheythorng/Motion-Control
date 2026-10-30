@@ -86,7 +86,7 @@ com.example.airscroll
 ```kotlin
 enum class Motion {
     AIR_SWIPE_UP, AIR_SWIPE_DOWN, AIR_SWIPE_LEFT, AIR_SWIPE_RIGHT,
-    OPEN_PALM_HOLD, THUMBS_UP, THUMBS_DOWN, FIST_HOLD, VICTORY, POINTING_UP,
+    OPEN_PALM_HOLD, THUMBS_UP, THUMBS_DOWN, FIST_HOLD, // VICTORY, POINTING_UP removed (§12)
 }
 
 @Serializable
@@ -133,8 +133,8 @@ MediaPipe Gesture Recognizer canned categories: `Closed_Fist`, `Open_Palm`, `Poi
 
 | Profile | Packages | Bindings |
 |---|---|---|
-| Short video | `com.zhiliaoapp.musically`, `com.ss.android.ugc.trill`, `com.instagram.android`, `com.google.android.youtube`, `com.facebook.katana` | AIR_SWIPE_UP → Swipe(UP) (next), AIR_SWIPE_DOWN → Swipe(DOWN) (previous), OPEN_PALM_HOLD → TapCenter (pause/play), THUMBS_UP → DoubleTapCenter (like), FIST_HOLD → TogglePause |
-| Global (fallback, disabled when `only_in_selected_apps`) | empty | AIR_SWIPE_UP → Swipe(UP), AIR_SWIPE_DOWN → Swipe(DOWN), FIST_HOLD → TogglePause |
+| Short video | `com.zhiliaoapp.musically`, `com.ss.android.ugc.trill`, `com.instagram.android`, `com.google.android.youtube`, `com.facebook.katana` | AIR_SWIPE_UP → Swipe(UP) (next), AIR_SWIPE_DOWN → Swipe(DOWN) (previous), OPEN_PALM_HOLD → TapCenter (pause/play), THUMBS_UP → DoubleTapCenter (like), FIST_HOLD → TapCenter (pause/play, §12) |
+| Global (fallback, disabled when `only_in_selected_apps`) | empty | AIR_SWIPE_UP → Swipe(UP), AIR_SWIPE_DOWN → Swipe(DOWN) |
 
 Note: `Swipe(UP)` means the finger moves up the screen (content scrolls to next item).
 
@@ -355,6 +355,14 @@ fun BubbleSettingRow(settings: SettingsRepository) {
 
 Users record their own static hand shapes (e.g. 🤟, 👌, three fingers up) and use them in profiles like the built-in poses. Everything stays on-device, and only landmark coordinates are stored, never images. Custom *movements* (drawing a circle or a Z) are a later step; see D8.
 
+**As built (Phase 7).** Differences from the plan below:
+- **Bindings:** profiles keep `bindings: Map<Motion, DeviceAction>` and gain `customBindings: Map<String, DeviceAction>` keyed by pose id, instead of switching every binding to string keys. Existing profiles load unchanged with no migration.
+- **Thresholds** aren't stored: `PoseMatcher` derives each pose's from its samples (2.5 × the 90th-percentile distance to the average sample, clamped to 0.12–0.35 palm lengths). Margin: the runner-up must be 1.25 × farther. These are starting values to tune on device (Test mode shows the nearest pose, its distance and threshold).
+- **Both landmark spaces are recorded** for every sample (D6). The space used for matching is a setting on the Custom poses screen while the two are compared; 2D by default.
+- **Fingerprints** (`PoseFingerprint`): 2D rotates in the image plane only; 3D aligns to a frame fixed to the palm (up, across, normal), so it ignores how the hand is turned.
+- **Recording** captures frames that barely changed since the previous one (steady), 2 rounds × 20 frames, after a 3 s countdown each. It warns when ≥ 30 % of the new samples match another custom pose, or when the built-in classifier saw a built-in pose in at least half of them.
+- **Conflicts with built-in gestures** (user decision, 2026-10-30): only the custom poses the current profile binds are matched, and a confident match wins over the built-in gesture for that frame. Each pose stores the built-in it resembles (`resembles`: what the classifier or the open-palm shape check saw in at least half the recorded frames). Recording warns about it, and the profile editor warns when a profile binds both the pose and that built-in ("Rock looks like Thumbs up. In this profile Rock wins…"). Saving is never blocked. Poses recorded before `resembles` existed get no editor warning until re-recorded.
+
 **Recognition: nearest match on normalized landmarks (no model training).**
 - **Input:** the 21 hand landmarks MediaPipe already returns for each frame.
 - **Normalize each frame** so that only the hand shape matters:
@@ -559,6 +567,10 @@ Build a debug overlay (landmarks + live dx/dy + state machine state) early in Ph
 - **D1 (bubble):** hosted in `AirScrollAccessibilityService` as `TYPE_ACCESSIBILITY_OVERLAY`; no `SYSTEM_ALERT_WINDOW`.
 - **D4 (DI):** Koin.
 - **Default bindings:** FIST_HOLD → TapCenter (play/pause), not TogglePause. A gesture that pauses gestures blocked every other gesture; pausing is done from the notification. TogglePause stays available in the profile editor, with a warning.
+- **Built-in gestures Victory and Pointing up removed** (user decision, 2026-10-30): uncommon gestures are left to custom poses. MediaPipe's `Victory` and `Pointing_Up` labels are ignored; users can record such shapes as custom poses. (Fist (hold) was removed too, then restored the same day.) Stored bindings for the removed motions are dropped when profiles load (`BindingsSerializer`), so the rest of the profile is kept.
 - **Working range:** hands are only accepted within a distance range set per profile in the editor (default 30 cm – 1 m, adjustable 10 cm – 2 m), estimated from MediaPipe world landmarks and the camera focal length.
 - **D9 (Quick Settings tile):** the tile starts/stops motion control; pause stays in the notification.
+- **D5 (custom poses):** a shared pose library; each profile binds poses to actions (user decision, 2026-10-30).
+- **D6 (landmark space):** both spaces are recorded; the matching space is a setting until the two are compared on device (user decision, 2026-10-30).
+- **D7 (custom pose trigger):** chosen per pose, Quick (~0.3 s stable) or Hold (~1 s still); new poses default to Hold (user decision, 2026-10-30).
 - **Active profile (Phase 3):** chosen on the Home screen until Phase 4 adds per-app switching.

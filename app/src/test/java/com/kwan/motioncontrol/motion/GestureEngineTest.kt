@@ -3,6 +3,7 @@ package com.kwan.motioncontrol.motion
 import com.kwan.motioncontrol.data.DefaultProfiles
 import com.kwan.motioncontrol.data.DeviceAction
 import com.kwan.motioncontrol.data.Direction
+import com.kwan.motioncontrol.data.Gesture
 import com.kwan.motioncontrol.data.Motion
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -16,8 +17,8 @@ class GestureEngineTest {
     private val engine = GestureEngine(
         bindings = DefaultProfiles.shortVideo.bindings + (Motion.OPEN_PALM_HOLD to DeviceAction.TapCenter),
         isPaused = { paused },
-        onAction = { motion, action ->
-            fired += motion
+        onAction = { gesture, action ->
+            fired += (gesture as Gesture.BuiltIn).motion
             if (action == DeviceAction.TogglePause) paused = !paused
         },
     )
@@ -97,21 +98,21 @@ class GestureEngineTest {
     }
 
     @Test fun holdFiresOncePerHold() {
-        holdStill("Closed_Fist", 3000)
-        assertEquals(listOf(Motion.FIST_HOLD), fired)
+        holdStill("Open_Palm", 3000)
+        assertEquals(listOf(Motion.OPEN_PALM_HOLD), fired)
         holdStill("None", 500) // release the pose
-        holdStill("Closed_Fist", 1200)
-        assertEquals(listOf(Motion.FIST_HOLD, Motion.FIST_HOLD), fired)
+        holdStill("Open_Palm", 1200)
+        assertEquals(listOf(Motion.OPEN_PALM_HOLD, Motion.OPEN_PALM_HOLD), fired)
     }
 
     @Test fun classifierFlickerDuringLongHoldDoesNotRefire() {
-        // Seen on device: one long fist toggled pause twice because a single frame
+        // Seen on device: one long hold toggled pause twice because a single frame
         // classified as something else counted as letting go.
         repeat(6) {
-            holdStill("Closed_Fist", 600)
+            holdStill("Open_Palm", 600)
             hand(0.5f, REST_Y, "None")
         }
-        assertEquals(listOf(Motion.FIST_HOLD), fired)
+        assertEquals(listOf(Motion.OPEN_PALM_HOLD), fired)
     }
 
     @Test fun openPalmHoldPlaysOrPausesVideo() {
@@ -138,7 +139,7 @@ class GestureEngineTest {
         distanceCm = 20f
         holdStill("None", 200)
         moveVertically(0.8f, 0.3f)
-        holdStill("Closed_Fist", 1500)
+        holdStill("Open_Palm", 1500)
         assertEquals(emptyList<Motion>(), fired)
     }
 
@@ -180,18 +181,30 @@ class GestureEngineTest {
     }
 
     @Test fun resetForgetsAPoseHeldBeforeTheCameraStopped() {
-        // Fist held, then the camera stops (left the app) before the hold completes.
-        holdStill("Closed_Fist", 800)
+        // Palm held, then the camera stops (left the app) before the hold completes.
+        holdStill("Open_Palm", 800)
         engine.reset()
-        // Back in the app with the fist still up: the hold starts over instead of firing at once.
-        holdStill("Closed_Fist", 600)
+        // Back in the app with the palm still up: the hold starts over instead of firing at once.
+        holdStill("Open_Palm", 600)
         assertEquals(emptyList<Motion>(), fired)
-        holdStill("Closed_Fist", 600)
-        assertEquals(listOf(Motion.FIST_HOLD), fired)
+        holdStill("Open_Palm", 600)
+        assertEquals(listOf(Motion.OPEN_PALM_HOLD), fired)
+    }
+
+    @Test fun removedBuiltInPosesDoNothing() {
+        listOf("Victory", "Pointing_Up").forEach { holdStill(it, 1500) }
+        assertEquals(emptyList<Motion>(), fired)
+    }
+
+    @Test fun fistHoldPlaysOrPausesVideo() {
+        val actions = mutableListOf<DeviceAction>()
+        val e = GestureEngine(DefaultProfiles.shortVideo.bindings) { _, action -> actions += action }
+        repeat(20) { e.onFrame(HandFrame(now, List(21) { HandPoint(0.5f, 0.8f) }, "Closed_Fist", 0.9f)); now += FRAME_MS }
+        assertEquals(listOf<DeviceAction>(DeviceAction.TapCenter), actions)
     }
 
     @Test fun holdNeedsAFullSecond() {
-        holdStill("Closed_Fist", 800)
+        holdStill("Open_Palm", 800)
         assertEquals(emptyList<Motion>(), fired)
     }
 
@@ -208,18 +221,18 @@ class GestureEngineTest {
     }
 
     @Test fun lowConfidencePoseIsIgnored() {
-        holdStill("Closed_Fist", 2000, score = 0.4f)
+        holdStill("Open_Palm", 2000, score = 0.4f)
         assertEquals(emptyList<Motion>(), fired)
     }
 
-    @Test fun fistHoldPlaysOrPausesVideoAndNeverBlocksOtherMotions() {
+    @Test fun palmHoldPlaysOrPausesVideoAndNeverBlocksOtherMotions() {
         val actions = mutableListOf<DeviceAction>()
         val e = GestureEngine(DefaultProfiles.shortVideo.bindings) { _, action -> actions += action }
         fun frame(y: Float, gesture: String) {
             e.onFrame(HandFrame(now, List(21) { HandPoint(0.5f, y) }, gesture, 0.9f))
             now += FRAME_MS
         }
-        repeat(18) { frame(0.8f, "Closed_Fist") } // ~1.2 s fist hold
+        repeat(18) { frame(0.8f, "Open_Palm") } // ~1.2 s palm hold
         repeat(14) { frame(0.8f, "None") } // past the cooldown
         (0..6).forEach { frame(0.8f - 0.5f * it / 6, "None") } // swipe up
         assertEquals(
@@ -230,7 +243,7 @@ class GestureEngineTest {
 
     @Test fun pausedFromNotificationIgnoresEveryMotion() {
         paused = true
-        holdStill("Closed_Fist", 1200)
+        holdStill("Open_Palm", 1200)
         holdStill("None", 900)
         moveVertically(0.8f, 0.3f)
         moveVertically(0.3f, 0.8f) // also ignored while paused
@@ -295,7 +308,7 @@ class GestureEngineTest {
         fun firedAt(sensitivity: Float): List<Motion> {
             val got = mutableListOf<Motion>()
             val profile = DefaultProfiles.shortVideo.copy(sensitivity = sensitivity)
-            val e = GestureEngine(profile.bindings, ProfileTuning.configFor(profile)) { motion, _ -> got += motion }
+            val e = GestureEngine(profile.bindings, ProfileTuning.configFor(profile)) { gesture, _ -> got += (gesture as Gesture.BuiltIn).motion }
             repeat(3) { frameAt(e, 0.8f) }
             swipe(e, 0.8f, 0.68f) // a small swipe: 12 % of the frame
             return got

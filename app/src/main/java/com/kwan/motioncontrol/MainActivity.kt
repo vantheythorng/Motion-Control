@@ -26,6 +26,8 @@ import androidx.lifecycle.lifecycleScope
 import com.kwan.motioncontrol.accessibility.ActionDispatcher
 import com.kwan.motioncontrol.accessibility.AirScrollAccessibilityService
 import com.kwan.motioncontrol.accessibility.ForegroundAppTracker
+import com.kwan.motioncontrol.data.CustomPoseRepository
+import com.kwan.motioncontrol.data.PoseSpace
 import com.kwan.motioncontrol.data.ProfileRepository
 import com.kwan.motioncontrol.data.ProfileResolver
 import com.kwan.motioncontrol.data.SettingsRepository
@@ -35,6 +37,8 @@ import com.kwan.motioncontrol.ui.profiles.AppPickerScreen
 import com.kwan.motioncontrol.motion.MotionStateStore
 import com.kwan.motioncontrol.ui.home.HomeScreen
 import com.kwan.motioncontrol.ui.onboarding.OnboardingScreen
+import com.kwan.motioncontrol.ui.poses.CustomPosesScreen
+import com.kwan.motioncontrol.ui.poses.RecordPoseScreen
 import com.kwan.motioncontrol.ui.profiles.ProfileEditorScreen
 import com.kwan.motioncontrol.ui.profiles.ProfilesScreen
 import com.kwan.motioncontrol.ui.testmode.TestModeScreen
@@ -48,6 +52,7 @@ class MainActivity : ComponentActivity() {
     private val dispatcher: ActionDispatcher by inject()
     private val motionStore: MotionStateStore by inject()
     private val profileRepository: ProfileRepository by inject()
+    private val customPoseRepository: CustomPoseRepository by inject()
     private val settings: SettingsRepository by inject()
     private val installedApps: InstalledApps by inject()
 
@@ -72,6 +77,7 @@ class MainActivity : ComponentActivity() {
                         )
                         true -> AppContent(
                             repository = profileRepository,
+                            poseRepository = customPoseRepository,
                             settings = settings,
                             installedApps = installedApps,
                             store = motionStore,
@@ -110,6 +116,9 @@ private sealed interface Screen {
     /** Tests [profileId], or the default profile when null. */
     data class TestMode(val profileId: String?) : Screen
     data object Troubleshooting : Screen
+    data object CustomPoses : Screen
+    /** Records a new pose, or re-records [poseId]. */
+    data class RecordPose(val poseId: String?) : Screen
 }
 
 private fun Screen.encode(): String = when (this) {
@@ -119,11 +128,15 @@ private fun Screen.encode(): String = when (this) {
     is Screen.AppPicker -> "apps:$profileId"
     is Screen.TestMode -> "test:${profileId.orEmpty()}"
     Screen.Troubleshooting -> "troubleshooting"
+    Screen.CustomPoses -> "poses"
+    is Screen.RecordPose -> "record:${poseId.orEmpty()}"
 }
 
 private fun decodeScreen(s: String): Screen = when {
     s == "profiles" -> Screen.Profiles
     s == "troubleshooting" -> Screen.Troubleshooting
+    s == "poses" -> Screen.CustomPoses
+    s.startsWith("record:") -> Screen.RecordPose(s.removePrefix("record:").ifEmpty { null })
     s.startsWith("editor:") -> Screen.ProfileEditor(s.removePrefix("editor:"))
     s.startsWith("apps:") -> Screen.AppPicker(s.removePrefix("apps:"))
     s.startsWith("test:") -> Screen.TestMode(s.removePrefix("test:").ifEmpty { null })
@@ -138,6 +151,7 @@ private val backStackSaver = Saver<List<Screen>, ArrayList<String>>(
 @Composable
 private fun AppContent(
     repository: ProfileRepository,
+    poseRepository: CustomPoseRepository,
     settings: SettingsRepository,
     installedApps: InstalledApps,
     store: MotionStateStore,
@@ -171,6 +185,8 @@ private fun AppContent(
     val context = LocalContext.current
     val tileAdded by remember { TileStatus.added(context) }.collectAsStateWithLifecycle(initialValue = true)
     val bubbleEnabled by settings.bubbleEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val customPoses by poseRepository.poses.collectAsStateWithLifecycle(initialValue = emptyList())
+    val poseSpace by settings.poseSpace.collectAsStateWithLifecycle(initialValue = PoseSpace.IMAGE)
     val debug by store.debug.collectAsStateWithLifecycle()
     // Same resolution the service uses, so Home is right even while motion control is off.
     val route = routing?.let { ProfileResolver.resolve(lastApp, connected != null, it) }
@@ -190,6 +206,7 @@ private fun AppContent(
             onEditProfile = { id -> navigate(Screen.ProfileEditor(id)) },
             onAddAppToProfile = { id, pkg -> scope.launch { repository.assignApps(id, setOf(pkg)) } },
             onOpenProfiles = { navigate(Screen.Profiles) },
+            onOpenCustomPoses = { navigate(Screen.CustomPoses) },
             onOpenTestMode = { navigate(Screen.TestMode(null)) },
             onOpenTroubleshooting = { navigate(Screen.Troubleshooting) },
             tileAdded = tileAdded,
@@ -211,6 +228,7 @@ private fun AppContent(
                 }
             },
             onDelete = { id -> scope.launch { repository.delete(id) } },
+            onOpenCustomPoses = { navigate(Screen.CustomPoses) },
             onResetToDefaults = { scope.launch { repository.resetToDefaults() } },
             modifier = modifier,
         )
@@ -223,6 +241,8 @@ private fun AppContent(
             onAddApps = { navigate(Screen.AppPicker(screen.profileId)) },
             onRemoveApp = { pkg -> scope.launch { repository.unassignApp(screen.profileId, pkg) } },
             onTest = { navigate(Screen.TestMode(screen.profileId)) },
+            customPoses = customPoses,
+            onOpenCustomPoses = { navigate(Screen.CustomPoses) },
             modifier = modifier,
         )
         is Screen.AppPicker -> AppPickerScreen(
@@ -239,6 +259,8 @@ private fun AppContent(
             if (profile != null) {
                 TestModeScreen(
                     profile = profile,
+                    customPoses = customPoses,
+                    poseSpace = poseSpace,
                     store = store,
                     accessibilityEnabled = connected != null,
                     onDispatch = dispatcher::dispatch,
@@ -249,6 +271,27 @@ private fun AppContent(
         }
         Screen.Troubleshooting -> TroubleshootingScreen(
             accessibilityRunning = connected != null,
+            onBack = ::back,
+            modifier = modifier,
+        )
+        Screen.CustomPoses -> CustomPosesScreen(
+            poses = customPoses,
+            poseSpace = poseSpace,
+            onSetPoseSpace = { space -> scope.launch { settings.setPoseSpace(space) } },
+            onNew = { navigate(Screen.RecordPose(null)) },
+            onRerecord = { id -> navigate(Screen.RecordPose(id)) },
+            onRename = { id, name -> scope.launch { poseRepository.rename(id, name) } },
+            onSetTrigger = { id, trigger -> scope.launch { poseRepository.setTrigger(id, trigger) } },
+            onDelete = { id -> scope.launch { poseRepository.delete(id) } },
+            onBack = ::back,
+            modifier = modifier,
+        )
+        is Screen.RecordPose -> RecordPoseScreen(
+            existing = customPoses.firstOrNull { it.id == screen.poseId },
+            otherPoses = customPoses.filterNot { it.id == screen.poseId },
+            poseSpace = poseSpace,
+            store = store,
+            onSave = { pose -> scope.launch { if (poseRepository.save(pose)) back() } },
             onBack = ::back,
             modifier = modifier,
         )

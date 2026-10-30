@@ -74,6 +74,7 @@ fun HomeScreen(
     onEditProfile: (String) -> Unit,
     onAddAppToProfile: (profileId: String, packageName: String) -> Unit,
     onOpenProfiles: () -> Unit,
+    onOpenCustomPoses: () -> Unit,
     onOpenTestMode: () -> Unit,
     onOpenTroubleshooting: () -> Unit,
     /** Whether the Quick Settings tile is already in the user's tiles. */
@@ -101,6 +102,10 @@ fun HomeScreen(
             profiles, defaultProfile, useInAllApps, onUseInAllAppsChange, onSelectDefault, onEditProfile,
             onOpenProfiles,
         )
+        // Poses are shared by all profiles, so they're managed from here, not inside a profile.
+        OutlinedButton(onClick = onOpenCustomPoses, modifier = Modifier.fillMaxWidth()) {
+            Text("Custom poses")
+        }
         if (!tileAdded) {
             HorizontalDivider()
             QuickSettingsSection()
@@ -198,7 +203,7 @@ private fun MotionSection(motion: MotionState, debug: DebugFrame?, route: AppRou
         val s = debug?.snapshot
         Text(
             "Hand: ${if (s?.handPresent == true) "yes" else "no"} · " +
-                "Last gesture: ${s?.lastMotion?.label ?: "-"}",
+                "Last gesture: ${s?.lastGesture?.label ?: "-"}",
             style = MaterialTheme.typography.bodySmall,
         )
     }
@@ -383,6 +388,7 @@ fun HomeScreenPreview() {
             onEditProfile = {},
             onAddAppToProfile = { _, _ -> },
             onOpenProfiles = {},
+            onOpenCustomPoses = {},
             onOpenTestMode = {},
             onOpenTroubleshooting = {},
             tileAdded = false,

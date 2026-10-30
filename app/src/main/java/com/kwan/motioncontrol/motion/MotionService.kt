@@ -27,10 +27,10 @@ import com.kwan.motioncontrol.accessibility.ActionDispatcher
 import com.kwan.motioncontrol.accessibility.AirScrollAccessibilityService
 import com.kwan.motioncontrol.accessibility.ForegroundAppTracker
 import com.kwan.motioncontrol.data.AppRoute
+import com.kwan.motioncontrol.data.CustomPoseRepository
 import com.kwan.motioncontrol.data.DefaultProfiles
 import com.kwan.motioncontrol.data.DeviceAction
-import com.kwan.motioncontrol.data.Motion
-import com.kwan.motioncontrol.data.Profile
+import com.kwan.motioncontrol.data.Gesture
 import com.kwan.motioncontrol.data.ProfileRepository
 import com.kwan.motioncontrol.data.ProfileResolver
 import com.kwan.motioncontrol.data.SettingsRepository
@@ -63,11 +63,11 @@ class MotionService : LifecycleService() {
     private val profiles: ProfileRepository by inject()
     private val installedApps: InstalledApps by inject()
     private val settings: SettingsRepository by inject()
+    private val customPoses: CustomPoseRepository by inject()
 
     /** Inputs of the single camera decision (see [cameraWanted]). */
     private val running = MutableStateFlow(false)
     private val screenUsable = MutableStateFlow(false)
-    private var appliedProfile: Profile? = null
     private var notificationText: String? = null
     /** The notification offers "Show bubble" only while the bubble is off. */
     private var bubbleEnabled = false
@@ -100,8 +100,8 @@ class MotionService : LifecycleService() {
             bindings = DefaultProfiles.shortVideo.bindings,
             config = ProfileTuning.configFor(DefaultProfiles.shortVideo),
             isPaused = { store.state.value.paused },
-            onIgnored = { motion, reason -> Log.d(TAG, "$motion ignored: $reason") },
-            onAction = { motion, action -> mainHandler.post { perform(motion, action) } },
+            onIgnored = { gesture, reason -> Log.d(TAG, "${gesture.label} ignored: $reason") },
+            onAction = { gesture, action -> mainHandler.post { perform(gesture, action) } },
         )
         tracker = HandTracker(
             context = this,
@@ -135,6 +135,20 @@ class MotionService : LifecycleService() {
             .distinctUntilChanged()
             .stateIn(lifecycleScope, SharingStarted.Eagerly, null)
         lifecycleScope.launch { routes.filterNotNull().collect(::onRoute) }
+        // The profile in use and the custom poses go to the engine together; edits to either
+        // (including recording a new pose) apply live.
+        lifecycleScope.launch {
+            combine(
+                routes.map { (it as? AppRoute.Use)?.profile }.filterNotNull().distinctUntilChanged(),
+                customPoses.poses,
+                settings.poseSpace,
+            ) { profile, poses, space ->
+                Triple(profile, CustomPoses(poses, profile.customBindings, space), poses.size)
+            }.collect { (profile, custom, poseCount) ->
+                engine.applyProfile(profile.bindings, ProfileTuning.configFor(profile), custom)
+                Log.d(TAG, "Profile applied: ${profile.name} ${profile.bindings}, $poseCount custom poses")
+            }
+        }
         lifecycleScope.launch {
             settings.bubbleEnabled.collect { enabled ->
                 bubbleEnabled = enabled
@@ -155,11 +169,6 @@ class MotionService : LifecycleService() {
 
     private fun onRoute(route: AppRoute) {
         val label = route.app?.let(installedApps::label)
-        if (route is AppRoute.Use && route.profile != appliedProfile) {
-            appliedProfile = route.profile
-            engine.applyProfile(route.profile.bindings, ProfileTuning.configFor(route.profile))
-            Log.d(TAG, "Profile applied: ${route.profile.name} for ${route.app} ${route.profile.bindings}")
-        }
         if (route is AppRoute.Off) Log.d(TAG, "Camera off for ${route.app}: ${route.reason}")
         store.update { it.copy(route = route, appLabel = label) }
         if (inForeground) refreshNotification()
@@ -290,10 +299,10 @@ class MotionService : LifecycleService() {
         statPeakDy = 0f
     }
 
-    private fun perform(motion: Motion, action: DeviceAction) {
+    private fun perform(gesture: Gesture, action: DeviceAction) {
         if (destroyed) return
-        Log.d(TAG, "$motion -> $action")
-        store.notifyFired(motion)
+        Log.d(TAG, "${gesture.label} -> $action")
+        store.notifyFired(gesture)
         when (action) {
             DeviceAction.TogglePause -> setPaused(!store.state.value.paused)
             else -> if (!dispatcher.dispatch(action)) {

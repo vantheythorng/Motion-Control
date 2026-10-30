@@ -1,7 +1,7 @@
 package com.kwan.motioncontrol.motion
 
 import com.kwan.motioncontrol.data.AppRoute
-import com.kwan.motioncontrol.data.Motion
+import com.kwan.motioncontrol.data.Gesture
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,12 +49,12 @@ class MotionStateStore {
         _testModeActive.value = active
     }
 
-    /** Each motion that triggered an action, so the bubble can flash. */
-    private val _fired = MutableSharedFlow<Motion>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    val fired: SharedFlow<Motion> = _fired.asSharedFlow()
+    /** Each gesture that triggered an action, so the bubble can flash. */
+    private val _fired = MutableSharedFlow<Gesture>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val fired: SharedFlow<Gesture> = _fired.asSharedFlow()
 
-    fun notifyFired(motion: Motion) {
-        _fired.tryEmit(motion)
+    fun notifyFired(gesture: Gesture) {
+        _fired.tryEmit(gesture)
     }
 
     fun update(transform: (MotionState) -> MotionState) = _state.update(transform)

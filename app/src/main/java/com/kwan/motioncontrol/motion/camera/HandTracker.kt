@@ -28,6 +28,7 @@ import com.google.mediapipe.tasks.vision.gesturerecognizer.GestureRecognizer
 import com.google.mediapipe.tasks.vision.gesturerecognizer.GestureRecognizerResult
 import com.kwan.motioncontrol.motion.HandFrame
 import com.kwan.motioncontrol.motion.HandPoint
+import com.kwan.motioncontrol.motion.HandPoint3
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import kotlin.math.hypot
@@ -218,6 +219,9 @@ class HandTracker(
 
     private fun onResult(result: GestureRecognizerResult, width: Int, height: Int) {
         val landmarks = result.landmarks().firstOrNull()?.map { HandPoint(it.x(), it.y()) }
+        val world = result.worldLandmarks().firstOrNull()?.map { HandPoint3(it.x(), it.y(), it.z()) }
+        // The frame is mirrored like a selfie, which is what MediaPipe's handedness assumes.
+        val left = result.handedness().firstOrNull()?.firstOrNull()?.categoryName() == "Left"
         val top = result.gestures().firstOrNull()?.firstOrNull()
         if (landmarks != null) lastHandAt = SystemClock.uptimeMillis()
         onFrame(
@@ -227,6 +231,9 @@ class HandTracker(
                 gesture = top?.categoryName(),
                 gestureScore = top?.score() ?: 0f,
                 distanceCm = estimateDistanceCm(result, width, height),
+                world = world,
+                leftHand = left,
+                aspect = width.toFloat() / height,
             )
         )
     }

@@ -37,6 +37,7 @@ fun ProfilesScreen(
     onEdit: (String) -> Unit,
     onMakeDefault: (String) -> Unit,
     onNew: () -> Unit,
+    onOpenCustomPoses: () -> Unit,
     onDelete: (String) -> Unit,
     onResetToDefaults: () -> Unit,
     modifier: Modifier = Modifier,
@@ -101,6 +102,9 @@ fun ProfilesScreen(
         }
         Button(onClick = onNew, modifier = Modifier.fillMaxWidth()) {
             Text("New profile (copy of the default, no apps)")
+        }
+        OutlinedButton(onClick = onOpenCustomPoses, modifier = Modifier.fillMaxWidth()) {
+            Text("Custom poses")
         }
         OutlinedButton(onClick = { confirmReset = true }, modifier = Modifier.fillMaxWidth()) {
             Text("Reset to defaults")

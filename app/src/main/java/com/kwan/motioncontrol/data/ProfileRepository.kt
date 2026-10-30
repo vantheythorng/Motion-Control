@@ -81,6 +81,11 @@ class ProfileRepository(private val dataStore: DataStore<Preferences>) {
         list.map { if (it.id == profileId) it.copy(packages = it.packages - packageName) else it }
     }
 
+    /** Removes the deleted custom pose [poseId] from every profile. */
+    suspend fun removeCustomBindings(poseId: String): Boolean = update { list ->
+        list.map { it.copy(customBindings = it.customBindings - poseId) }
+    }
+
     suspend fun setDefault(id: String) {
         dataStore.edit { it[DEFAULT_PROFILE_ID] = id }
     }

@@ -10,7 +10,7 @@ Status of the build phases in [SPEC.md](SPEC.md) §10. Update this file when a p
 | 4 | Per-app profiles, camera released in other apps | Done | `03051e7` |
 | 5 | Floating bubble, quick panel, bubble toggle | Done | `fdcfbbb` |
 | 6 | OEM guides, battery tuning | Built; 30-min test pending | `d8e6d8f` |
-| 7 | Custom poses | Not started (spec only) | – |
+| 7 | Custom poses | Built, checked on device; D6 open | – |
 | 8 | Quick Settings tile | Done | `1a51faf` |
 
 Phases 1–4 were built before this file existed; their device checks weren't recorded.
@@ -97,21 +97,24 @@ To do:
 
 ## Phase 7: Custom poses
 
-Not started; the design is in SPEC.md §5.7.
+Built 2026-10-30; unit tests, build and lint pass; checked on device. Still open: the D6 choice (2D or 3D matching) and confirming the "done when" check below. What was built is in SPEC.md §5.7 ("As built").
 
-Decide first (SPEC §11):
-- [ ] D5: shared pose library (recommended) or poses owned by one profile
-- [ ] D6: image landmarks or world landmarks; record the same poses both ways on a device to choose
-- [ ] D7: quick stable pose (~0.3 s) or 1 s hold, possibly per pose
+Decisions (SPEC §12):
+- [x] D5: shared pose library; each profile binds poses to actions
+- [x] D7: Quick or Hold, chosen per pose (Hold by default)
+- [ ] D6: both 2D and 3D landmarks are recorded; compare on the phone with the setting on the Custom poses screen, then pick one and remove the setting
 
-To do:
-- [ ] `CustomPose` model and storage in DataStore
-- [ ] Profile bindings keyed by string (`"AIR_SWIPE_UP"`, `"custom:<id>"`); existing profiles load unchanged
-- [ ] Landmark normalization and nearest-match recognition, fed into `GestureEngine`
-- [ ] "Custom poses" screen: record (2 × ~2 s), live match %, rename, re-record, delete; limit ~10
-- [ ] Warning when a new pose is too close to a built-in or another custom pose
-- [ ] Custom poses in the profile editor and Test mode
-- [ ] Deleting a pose removes its bindings from every profile
+Checklist:
+- [x] `CustomPose` model and storage in DataStore (`CustomPoseRepository`), limit 10
+- [x] Profile `customBindings` by pose id (instead of string keys for every binding); existing profiles load unchanged
+- [x] Landmark normalization (`PoseFingerprint`) and nearest-match recognition (`PoseMatcher`), fed into `GestureEngine`; a custom match beats the built-in classifier
+- [x] "Custom poses" screen (from Home, Profiles and the profile editor): record (2 × 20 steady frames), live match % in 2D and 3D, rename, re-record, Quick/Hold, delete
+- [x] Warning when a new pose is too close to a built-in or another custom pose
+- [x] Conflicts: only poses the profile uses are matched (they win over the built-in); each pose stores the built-in it resembles, and the profile editor warns when a profile uses both
+- [x] Profile editor lists only the poses the profile uses, with "Add a saved pose" to add one and "Remove" to take one out (the pose stays saved)
+- [x] Custom poses in Test mode (nearest pose with distance and threshold) and motion control
+- [x] Deleting a pose removes its bindings from every profile
+- [ ] Device check / tuning: thresholds and margin (`PoseMatcher`), steadiness while recording (`PoseRecorder.STEADY`)
 - [ ] Done when (SPEC §10): a new pose (e.g. 🤟) is recorded in under 30 s, bound to an action, and fires in TikTok without restarting motion control; in 2 minutes of normal hand movement and built-in poses it never fires by mistake
 
 ## Phase 8: Quick Settings tile
@@ -125,5 +128,5 @@ Done 2026-10-30 (`1a51faf`).
 
 ## Other open items
 
-- Open decisions D2, D3, D5–D8 (SPEC.md §11) are still open; D1, D4 and D9 are decided (§12).
+- Open decisions: D2, D3, D8, and D6 until compared on device (SPEC.md §11). D1, D4, D5, D7 and D9 are decided (§12).
 - `.idea/.name` is untracked and deliberately not committed (IDE file).
