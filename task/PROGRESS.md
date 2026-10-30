@@ -8,7 +8,7 @@ Status of the build phases in [SPEC.md](SPEC.md) §10. Update this file when a p
 | 2 | `MotionService`, camera, air swipes, Pause/Resume notification | Done | `c276c5a` |
 | 3 | Profiles, profile editor, Test mode | Done | `c149211` |
 | 4 | Per-app profiles, camera released in other apps | Done | `03051e7` |
-| 5 | Floating bubble, quick panel, bubble toggle | Done | – |
+| 5 | Floating bubble, quick panel, bubble toggle | Done | `fdcfbbb` |
 | 6 | OEM guides, battery tuning, Play disclosures | Not started | – |
 | 7 | Custom poses | Not started (spec only) | – |
 | 8 | Quick Settings tile | Done | `1a51faf` |
