@@ -41,4 +41,11 @@ class SettingsRepositoryTest {
         assertFalse(settings.hideBubble())
         assertFalse(settings.bubbleEnabled.first())
     }
+
+    @Test fun onboardingIsNotDoneUntilFinished() = runTest {
+        val settings = settings()
+        assertFalse(settings.onboardingDone.first())
+        settings.setOnboardingDone()
+        assertTrue(settings.onboardingDone.first())
+    }
 }

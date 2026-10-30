@@ -4,11 +4,9 @@ import android.Manifest
 import android.app.StatusBarManager
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.graphics.drawable.Icon
-import android.provider.Settings
 import androidx.annotation.RequiresApi
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -21,7 +19,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -39,7 +36,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -54,9 +50,12 @@ import com.kwan.motioncontrol.motion.DebugFrame
 import com.kwan.motioncontrol.motion.MotionService
 import com.kwan.motioncontrol.motion.MotionState
 import com.kwan.motioncontrol.motion.ProfileTuning
+import com.kwan.motioncontrol.system.BatteryOptimization
 import com.kwan.motioncontrol.system.TileStatus
 import com.kwan.motioncontrol.tile.MotionTileService
+import com.kwan.motioncontrol.ui.common.AccessibilityDisclosureDialog
 import com.kwan.motioncontrol.ui.common.ChoiceDropdown
+import com.kwan.motioncontrol.ui.common.rememberOnResume
 import com.kwan.motioncontrol.ui.theme.MotionControlTheme
 
 @Composable
@@ -76,6 +75,7 @@ fun HomeScreen(
     onAddAppToProfile: (profileId: String, packageName: String) -> Unit,
     onOpenProfiles: () -> Unit,
     onOpenTestMode: () -> Unit,
+    onOpenTroubleshooting: () -> Unit,
     /** Whether the Quick Settings tile is already in the user's tiles. */
     tileAdded: Boolean,
     bubbleEnabled: Boolean,
@@ -109,12 +109,29 @@ fun HomeScreen(
         OutlinedButton(onClick = onOpenTestMode, modifier = Modifier.fillMaxWidth()) {
             Text("Test mode (live hand view, no actions)")
         }
+        KeepRunningSection(onOpenTroubleshooting)
+    }
+}
+
+/** Warns when Android may stop motion control in the background, and links to Troubleshooting. */
+@Composable
+private fun KeepRunningSection(onOpenTroubleshooting: () -> Unit) {
+    val context = LocalContext.current
+    val batteryExempt = rememberOnResume { BatteryOptimization.isExempt(context) }
+    if (!batteryExempt) {
+        Text(
+            "Battery optimization may stop motion control in the background. Fix it in Troubleshooting.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+    OutlinedButton(onClick = onOpenTroubleshooting, modifier = Modifier.fillMaxWidth()) {
+        Text("Troubleshooting")
     }
 }
 
 @Composable
 private fun AccessibilitySection(enabled: Boolean) {
-    val context = LocalContext.current
     var showDisclosure by remember { mutableStateOf(false) }
 
     Text(
@@ -127,22 +144,7 @@ private fun AccessibilitySection(enabled: Boolean) {
         }
     }
 
-    if (showDisclosure) {
-        AlertDialog(
-            onDismissRequest = { showDisclosure = false },
-            title = { Text("Accessibility permission") },
-            text = { Text(stringResource(R.string.accessibility_description)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDisclosure = false
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                }) { Text("Agree and open settings") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDisclosure = false }) { Text("Not now") }
-            },
-        )
-    }
+    if (showDisclosure) AccessibilityDisclosureDialog(onDismiss = { showDisclosure = false })
 }
 
 private val motionPermissions = buildList {
@@ -382,6 +384,7 @@ fun HomeScreenPreview() {
             onAddAppToProfile = { _, _ -> },
             onOpenProfiles = {},
             onOpenTestMode = {},
+            onOpenTroubleshooting = {},
             tileAdded = false,
             bubbleEnabled = true,
             onBubbleEnabledChange = {},

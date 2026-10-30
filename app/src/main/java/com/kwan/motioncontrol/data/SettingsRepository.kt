@@ -31,6 +31,13 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[BUBBLE_ENABLED] = enabled }
     }
 
+    /** False until the user finishes (or skips through) the first-run onboarding. */
+    val onboardingDone: Flow<Boolean> = dataStore.data.map { it[ONBOARDING_DONE] ?: false }.distinctUntilChanged()
+
+    suspend fun setOnboardingDone() {
+        dataStore.edit { it[ONBOARDING_DONE] = true }
+    }
+
     /**
      * Turns the bubble off from its × target. Returns true the first time only, when the caller
      * shows how to turn it back on.
@@ -49,6 +56,7 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         private val ONLY_IN_SELECTED_APPS = booleanPreferencesKey("only_in_selected_apps")
         private val BUBBLE_ENABLED = booleanPreferencesKey("bubble_enabled")
         private val BUBBLE_HIDDEN_HINT_SHOWN = booleanPreferencesKey("bubble_hidden_hint_shown")
+        private val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
 
         fun onlyInSelectedApps(prefs: Preferences): Boolean = prefs[ONLY_IN_SELECTED_APPS] ?: true
     }

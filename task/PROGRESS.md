@@ -9,7 +9,7 @@ Status of the build phases in [SPEC.md](SPEC.md) §10. Update this file when a p
 | 3 | Profiles, profile editor, Test mode | Done | `c149211` |
 | 4 | Per-app profiles, camera released in other apps | Done | `03051e7` |
 | 5 | Floating bubble, quick panel, bubble toggle | Done | `fdcfbbb` |
-| 6 | OEM guides, battery tuning | Partly done (see below) | – |
+| 6 | OEM guides, battery tuning | Built; 30-min test pending | – |
 | 7 | Custom poses | Not started (spec only) | – |
 | 8 | Quick Settings tile | Done | `1a51faf` |
 
@@ -74,7 +74,7 @@ Checklist:
 
 ## Phase 6: Reliability and battery
 
-Partly done; not started as a phase.
+Built 2026-10-30: Troubleshooting, battery exemption and onboarding. Unit tests, build and lint pass; checked on device. Only the 30-minute test below is left.
 
 **Not publishing on the Play Store** (user decision, 2026-10-30): the app is installed directly (APK). Play-only work (privacy policy, Play Console Permissions Declaration, SPEC §9) is out of scope. Revisit only if that changes.
 
@@ -86,9 +86,13 @@ Already in place from earlier phases:
 - [x] ~~Boot receiver~~: dropped, motion control never starts on its own (§12)
 
 To do:
-- [ ] Troubleshooting screen (§7): permission status re-check, and battery / auto-start guides per brand (Oppo, Vivo, Xiaomi, Realme, Samsung; see dontkillmyapp.com)
-- [ ] Ask to be excluded from battery optimization, with a reason
-- [ ] Onboarding (§7): explain the app, then ask for permissions one at a time with a reason each
+- [x] Troubleshooting screen (§7, from Home): camera, notifications, accessibility (incl. "switched on but not running"), battery optimization, each re-checked on resume with a fix button
+- [x] Battery / auto-start guide per brand (`OemGuides`: Xiaomi/Redmi/POCO, Oppo/Realme/OnePlus, Vivo/iQOO, Samsung, other), with a button that tries the brand's auto-start screen, falling back to app info
+- [x] Ask to be excluded from battery optimization (`BatteryOptimization`); Home warns while the app is restricted
+- [x] Device check: Troubleshooting statuses update after fixing each one in Settings; "Open auto-start settings" opens the right page (or app info) on the test phone
+- [x] Onboarding (§7): welcome, then camera → notifications → accessibility (doubles as the disclosure) → battery, one at a time with a reason; set-up steps are skipped, every step can be skipped (`onboarding_done`)
+- [x] Android 13+ "restricted settings" hint (accessibility switch greyed out for apps installed from a file) in onboarding and Troubleshooting
+- [x] Device check: onboarding on a fresh install (clear data), including the restricted-settings path
 - [ ] Done when (SPEC §10): 30 min of continuous use without false triggers, the service being killed, or overheating, on at least one Oppo, Vivo or Xiaomi phone
 
 ## Phase 7: Custom poses

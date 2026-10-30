@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import com.kwan.motioncontrol.accessibility.ActionDispatcher
 import com.kwan.motioncontrol.accessibility.AirScrollAccessibilityService
 import com.kwan.motioncontrol.accessibility.ForegroundAppTracker
@@ -33,10 +34,12 @@ import com.kwan.motioncontrol.system.TileStatus
 import com.kwan.motioncontrol.ui.profiles.AppPickerScreen
 import com.kwan.motioncontrol.motion.MotionStateStore
 import com.kwan.motioncontrol.ui.home.HomeScreen
+import com.kwan.motioncontrol.ui.onboarding.OnboardingScreen
 import com.kwan.motioncontrol.ui.profiles.ProfileEditorScreen
 import com.kwan.motioncontrol.ui.profiles.ProfilesScreen
 import com.kwan.motioncontrol.ui.testmode.TestModeScreen
 import com.kwan.motioncontrol.ui.theme.MotionControlTheme
+import com.kwan.motioncontrol.ui.troubleshooting.TroubleshootingScreen
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
@@ -58,17 +61,26 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MotionControlTheme {
+                // Null while DataStore loads, so neither screen flashes.
+                val onboardingDone by settings.onboardingDone.collectAsStateWithLifecycle(initialValue = null)
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    AppContent(
-                        repository = profileRepository,
-                        settings = settings,
-                        installedApps = installedApps,
-                        store = motionStore,
-                        dispatcher = dispatcher,
-                        editRequest = editRequest,
-                        onEditRequestHandled = { editRequest = null },
-                        modifier = Modifier.padding(innerPadding),
-                    )
+                    when (onboardingDone) {
+                        null -> Unit
+                        false -> OnboardingScreen(
+                            onFinish = { lifecycleScope.launch { settings.setOnboardingDone() } },
+                            modifier = Modifier.padding(innerPadding),
+                        )
+                        true -> AppContent(
+                            repository = profileRepository,
+                            settings = settings,
+                            installedApps = installedApps,
+                            store = motionStore,
+                            dispatcher = dispatcher,
+                            editRequest = editRequest,
+                            onEditRequestHandled = { editRequest = null },
+                            modifier = Modifier.padding(innerPadding),
+                        )
+                    }
                 }
             }
         }
@@ -97,6 +109,7 @@ private sealed interface Screen {
     data class AppPicker(val profileId: String) : Screen
     /** Tests [profileId], or the default profile when null. */
     data class TestMode(val profileId: String?) : Screen
+    data object Troubleshooting : Screen
 }
 
 private fun Screen.encode(): String = when (this) {
@@ -105,10 +118,12 @@ private fun Screen.encode(): String = when (this) {
     is Screen.ProfileEditor -> "editor:$profileId"
     is Screen.AppPicker -> "apps:$profileId"
     is Screen.TestMode -> "test:${profileId.orEmpty()}"
+    Screen.Troubleshooting -> "troubleshooting"
 }
 
 private fun decodeScreen(s: String): Screen = when {
     s == "profiles" -> Screen.Profiles
+    s == "troubleshooting" -> Screen.Troubleshooting
     s.startsWith("editor:") -> Screen.ProfileEditor(s.removePrefix("editor:"))
     s.startsWith("apps:") -> Screen.AppPicker(s.removePrefix("apps:"))
     s.startsWith("test:") -> Screen.TestMode(s.removePrefix("test:").ifEmpty { null })
@@ -176,6 +191,7 @@ private fun AppContent(
             onAddAppToProfile = { id, pkg -> scope.launch { repository.assignApps(id, setOf(pkg)) } },
             onOpenProfiles = { navigate(Screen.Profiles) },
             onOpenTestMode = { navigate(Screen.TestMode(null)) },
+            onOpenTroubleshooting = { navigate(Screen.Troubleshooting) },
             tileAdded = tileAdded,
             bubbleEnabled = bubbleEnabled,
             onBubbleEnabledChange = { enabled -> scope.launch { settings.setBubbleEnabled(enabled) } },
@@ -231,5 +247,10 @@ private fun AppContent(
                 )
             }
         }
+        Screen.Troubleshooting -> TroubleshootingScreen(
+            accessibilityRunning = connected != null,
+            onBack = ::back,
+            modifier = modifier,
+        )
     }
 }
