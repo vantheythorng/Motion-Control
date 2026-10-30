@@ -158,6 +158,11 @@ private fun BatteryStep(onSkip: () -> Unit) {
 private fun Finished(onFinish: () -> Unit) {
     Title("You're set")
     Body("Tap Start motion control on the Home screen. You can also start it from the Quick Settings tile.")
+    // Profiles ship without apps, so the camera stays off everywhere until the user adds one.
+    Body(
+        "Then open an app you want to control, like TikTok, and come back: the Home screen offers to " +
+            "add it to a profile. Motion control only works in apps you've added."
+    )
     Body("For quick controls over other apps, turn on the floating bubble on the Home screen.")
     Body("Troubleshooting on the Home screen checks all of this again, any time.")
     Button(onClick = onFinish, modifier = Modifier.fillMaxWidth()) { Text("Done") }
