@@ -507,6 +507,8 @@ A "Motion Control" tile in the notification shade. Tap it to turn motion control
 
 ## 9. Play Store policy
 
+**Not applicable for now:** the app won't be published on the Play Store; it is installed directly (user decision, 2026-10-30). Kept for reference in case that changes.
+
 - AccessibilityService use requires the Play Console Permissions Declaration and a prominent in-app disclosure before sending users to accessibility settings.
 - Frame and build the app around hands-free use (motor impairments, hands busy). Only set `isAccessibilityTool` if accessibility is genuinely the primary purpose.
 - Privacy policy must state camera frames are processed on-device and never stored or uploaded. Keep it true: no network permission needed for core features.
@@ -525,7 +527,7 @@ Which phases are finished or in progress is tracked in [PROGRESS.md](PROGRESS.md
 | 3 | `Profile` model, DataStore, profile editor, test mode | User remaps a motion and the new mapping works without restarting the service |
 | 4 | Foreground-app detection, per-app profiles, default profiles, camera released for unprofiled apps | Camera dot disappears when leaving TikTok for an unprofiled app and returns on re-entry |
 | 5 | Floating bubble, quick panel, `ArmCameraActivity` re-arm, bubble toggle setting | Switch, × target, and notification action all stay in sync; bubble tap re-arms camera after reboot |
-| 6 | ~~Boot receiver,~~ OEM guides, battery tuning, Play disclosures | 30 min continuous use without false triggers, service death, or overheating on at least one Oppo/Vivo/Xiaomi device |
+| 6 | ~~Boot receiver,~~ OEM guides, battery tuning, ~~Play disclosures~~ (not publishing on Play, §9) | 30 min continuous use without false triggers, service death, or overheating on at least one Oppo/Vivo/Xiaomi device |
 | 7 | Custom poses (§5.7): recording screen, normalized-landmark matching, string-keyed bindings, custom poses in the profile editor and Test mode | A user records a new pose (e.g. 🤟) in under 30 s, binds it to an action, and it fires in TikTok without restarting motion control; in a 2-minute session of normal hand movement and built-in poses it never fires by mistake; recording warns when the new pose is too similar to an existing one |
 
 | 8 | Quick Settings tile (§5.8): `TileService` with live state, `ArmCameraActivity` start path, "Add to Quick Settings" prompt on Home | From the notification shade, the tile starts motion control without leaving the open app (camera dot on in TikTok), stops it, and always shows the right state (off, running with profile, paused, setup needed), including after the app is closed or reinstalled; it never starts motion control on its own |
