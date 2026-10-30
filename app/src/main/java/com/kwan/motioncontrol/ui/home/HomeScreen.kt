@@ -59,6 +59,7 @@ import com.kwan.motioncontrol.system.TileStatus
 import com.kwan.motioncontrol.tile.MotionTileService
 import com.kwan.motioncontrol.ui.common.AccessibilityDisclosureDialog
 import com.kwan.motioncontrol.ui.common.ChoiceDropdown
+import com.kwan.motioncontrol.ui.common.BATTERY_RECHECK
 import com.kwan.motioncontrol.ui.common.rememberOnResume
 import com.kwan.motioncontrol.ui.theme.MotionControlTheme
 
@@ -201,7 +202,7 @@ private val ThemeMode.icon: Int
 @Composable
 private fun KeepRunningSection(onOpenTroubleshooting: () -> Unit) {
     val context = LocalContext.current
-    val batteryExempt = rememberOnResume { BatteryOptimization.isExempt(context) }
+    val batteryExempt = rememberOnResume(BATTERY_RECHECK) { BatteryOptimization.isExempt(context) }
     if (!batteryExempt) {
         Text(
             "Battery optimization may stop motion control in the background. Fix it in Troubleshooting.",

@@ -37,6 +37,7 @@ import com.kwan.motioncontrol.system.OemGuides
 import com.kwan.motioncontrol.ui.common.AccessibilityDisclosureDialog
 import com.kwan.motioncontrol.ui.common.RestrictedSettingsHint
 import com.kwan.motioncontrol.ui.common.ScreenHeader
+import com.kwan.motioncontrol.ui.common.BATTERY_RECHECK
 import com.kwan.motioncontrol.ui.common.rememberOnResume
 
 /**
@@ -73,7 +74,7 @@ fun TroubleshootingScreen(
             )
         }
         AccessibilityCheck(accessibilityRunning)
-        val batteryExempt = rememberOnResume { BatteryOptimization.isExempt(context) }
+        val batteryExempt = rememberOnResume(BATTERY_RECHECK) { BatteryOptimization.isExempt(context) }
         Check(
             title = "Battery optimization",
             ok = batteryExempt,

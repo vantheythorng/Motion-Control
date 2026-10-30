@@ -38,6 +38,7 @@ import com.kwan.motioncontrol.system.AccessibilityStatus
 import com.kwan.motioncontrol.system.BatteryOptimization
 import com.kwan.motioncontrol.system.OemGuides
 import com.kwan.motioncontrol.ui.common.RestrictedSettingsHint
+import com.kwan.motioncontrol.ui.common.BATTERY_RECHECK
 import com.kwan.motioncontrol.ui.common.rememberOnResume
 
 /**
@@ -51,7 +52,7 @@ import com.kwan.motioncontrol.ui.common.rememberOnResume
 @Composable
 fun OnboardingScreen(onFinish: () -> Unit, modifier: Modifier = Modifier) {
     val context = LocalContext.current
-    val status = rememberOnResume { context.setupStatus() }
+    val status = rememberOnResume(BATTERY_RECHECK) { context.setupStatus() }
     var step by rememberSaveable { mutableStateOf(OnboardingStep.WELCOME) }
     fun next() {
         step = Onboarding.next(step, context.setupStatus())
