@@ -2,4 +2,12 @@
 <resources>
 
     <style name="Theme.MotionControl" parent="android:Theme.Material.Light.NoActionBar" />
+
+    <!-- Launch screen (AndroidX SplashScreen, same on Android 10–11 as on 12+): the logo on its
+         own violet. MainActivity switches to Theme.MotionControl once settings are loaded. -->
+    <style name="Theme.MotionControl.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/Theme.MotionControl</item>
+    </style>
 </resources>

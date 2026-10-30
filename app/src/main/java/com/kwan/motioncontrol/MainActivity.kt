@@ -5,6 +5,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -49,6 +50,7 @@ import com.kwan.motioncontrol.ui.testmode.TestModeScreen
 import com.kwan.motioncontrol.ui.theme.MotionControlTheme
 import com.kwan.motioncontrol.ui.theme.isDark
 import com.kwan.motioncontrol.ui.troubleshooting.TroubleshootingScreen
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
 
@@ -64,8 +66,18 @@ class MainActivity : ComponentActivity() {
     /** A profile to open in the editor, asked for by the bubble's quick panel. */
     private var editRequest by mutableStateOf<String?>(null)
 
+    /** False until the settings are read; the splash screen stays up until then. */
+    private var settingsLoaded = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Before super.onCreate: swaps the launch theme for the app's theme when the splash ends.
+        installSplashScreen().setKeepOnScreenCondition { !settingsLoaded }
         super.onCreate(savedInstanceState)
+        lifecycleScope.launch {
+            // Onboarding or Home is only known once DataStore is read; no blank frame in between.
+            settings.onboardingDone.first()
+            settingsLoaded = true
+        }
         // Only for a fresh launch: after a recreation the back stack is already restored.
         if (savedInstanceState == null) editRequest = intent.getStringExtra(EXTRA_EDIT_PROFILE)
         setContent {
