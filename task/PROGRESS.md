@@ -126,6 +126,15 @@ Done 2026-10-30 (`1a51faf`).
 - Checked on device: the invisible `ArmCameraActivity` is unnoticeable when starting from the tile over another app.
 - Not yet checked on device: stopping from the tile, "Paused" on the tile, starting again after the app is swiped away, "Set up in app" with accessibility off, long-press, re-adding after removing the tile.
 
+## Build and release signing
+
+Set up like MultiDownloader's build:
+
+- Version: `versionName` and `versionCode` (YYYYMMDDNN) at the top of `gradle/libs.versions.toml`.
+- APK names: `Motion-Control_<dev|pro>_<versionName>_<versionCode>.apk` (debug = `dev`, release = `pro`).
+- arm64-v8a only, so the APK carries one copy of MediaPipe's native libraries.
+- Release builds are shrunk with R8 and signed from the git-ignored `secret/keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`; `storeFile` is relative to the project root). Without that file, `./gradlew :app:assembleRelease` still builds, but the APK is unsigned.
+
 ## Other open items
 
 - Open decisions: D2, D3, D8, and D6 until compared on device (SPEC.md §11). D1, D4, D5, D7 and D9 are decided (§12).
