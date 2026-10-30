@@ -75,9 +75,10 @@ class ProfileRepositoryTest {
         val repo = repository()
         val other = Profile(id = "other", name = "Other")
         repo.upsert(other)
+        repo.assignApps(DefaultProfiles.SHORT_VIDEO_ID, setOf("com.ss.android.ugc.trill"))
         repo.setDefault(DefaultProfiles.GLOBAL_ID)
         repo.delete(DefaultProfiles.GLOBAL_ID)
-        // Short video has apps, so the first profile without apps is preferred.
+        // Short video has an app, so the first profile without apps is preferred.
         assertEquals(other, repo.defaultProfile.first())
     }
 
@@ -94,6 +95,7 @@ class ProfileRepositoryTest {
     @Test fun assignAppsMovesThemFromOtherProfiles() = runTest {
         val repo = repository()
         val tiktok = "com.ss.android.ugc.trill"
+        assertTrue(repo.assignApps(DefaultProfiles.SHORT_VIDEO_ID, setOf(tiktok)))
         assertTrue(repo.assignApps(DefaultProfiles.GLOBAL_ID, setOf(tiktok, "com.android.chrome")))
         val byId = repo.profiles.first().associateBy { it.id }
         assertTrue(tiktok in byId.getValue(DefaultProfiles.GLOBAL_ID).packages)
@@ -110,9 +112,10 @@ class ProfileRepositoryTest {
 
     @Test fun unassignAppRemovesOnlyFromThatProfile() = runTest {
         val repo = repository()
+        repo.assignApps(DefaultProfiles.SHORT_VIDEO_ID, setOf("com.ss.android.ugc.trill", "com.instagram.android"))
         repo.unassignApp(DefaultProfiles.SHORT_VIDEO_ID, "com.instagram.android")
         val shortVideo = repo.profiles.first().first { it.id == DefaultProfiles.SHORT_VIDEO_ID }
-        assertEquals(DefaultProfiles.shortVideo.packages - "com.instagram.android", shortVideo.packages)
+        assertEquals(setOf("com.ss.android.ugc.trill"), shortVideo.packages)
     }
 
     @Test fun routingReadsProfilesDefaultAndSettingTogether() = runTest {

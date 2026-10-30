@@ -7,13 +7,23 @@ class ProfileResolverTest {
 
     private val tiktok = "com.ss.android.ugc.trill"
     private val chrome = "com.android.chrome"
-    private fun routing(onlySelected: Boolean = true, profiles: List<Profile> = DefaultProfiles.all) =
+    /** The user has added TikTok to Short video (the defaults ship without apps). */
+    private val shortVideo = DefaultProfiles.shortVideo.copy(packages = setOf(tiktok))
+    private fun routing(onlySelected: Boolean = true, profiles: List<Profile> = listOf(shortVideo, DefaultProfiles.global)) =
         Routing(profiles, DefaultProfiles.global, onlySelected)
 
     @Test fun appWithAProfileUsesIt() = assertEquals(
-        AppRoute.Use(DefaultProfiles.shortVideo, tiktok, viaDefault = false),
+        AppRoute.Use(shortVideo, tiktok, viaDefault = false),
         ProfileResolver.resolve(tiktok, accessibilityOn = true, routing()),
     )
+
+    @Test fun defaultProfilesShipWithoutApps() {
+        DefaultProfiles.all.forEach { assertEquals(emptySet<String>(), it.packages) }
+        assertEquals(
+            AppRoute.Off(OffReason.NO_PROFILE_FOR_APP, tiktok),
+            ProfileResolver.resolve(tiktok, accessibilityOn = true, routing(profiles = DefaultProfiles.all)),
+        )
+    }
 
     @Test fun otherAppsGetNoProfileByDefault() = assertEquals(
         AppRoute.Off(OffReason.NO_PROFILE_FOR_APP, chrome),
@@ -40,7 +50,7 @@ class ProfileResolverTest {
 
     @Test fun duplicateAssignmentUsesTheFirstProfile() {
         val other = Profile(id = "other", name = "Other", packages = setOf(tiktok))
-        val route = ProfileResolver.resolve(tiktok, true, routing(profiles = DefaultProfiles.all + other))
-        assertEquals(DefaultProfiles.shortVideo, (route as AppRoute.Use).profile)
+        val route = ProfileResolver.resolve(tiktok, true, routing(profiles = listOf(shortVideo, DefaultProfiles.global, other)))
+        assertEquals(shortVideo, (route as AppRoute.Use).profile)
     }
 }

@@ -13,7 +13,7 @@ import kotlinx.serialization.encoding.Encoder
 data class Profile(
     val id: String,
     val name: String,
-    /** Apps this profile is for; empty = global/default profile. Used from Phase 4. */
+    /** Apps this profile is for. Empty: used in no app, except as the default for other apps. */
     val packages: Set<String> = emptySet(),
     @Serializable(with = BindingsSerializer::class)
     val bindings: Map<Motion, DeviceAction> = emptyMap(),
@@ -63,13 +63,7 @@ object DefaultProfiles {
     val shortVideo = Profile(
         id = SHORT_VIDEO_ID,
         name = "Short video",
-        packages = setOf(
-            "com.zhiliaoapp.musically",
-            "com.ss.android.ugc.trill",
-            "com.instagram.android",
-            "com.google.android.youtube",
-            "com.facebook.katana",
-        ),
+        // No apps pre-assigned: the user adds their own (e.g. from Home's "Add TikTok to a profile").
         bindings = mapOf(
             Motion.AIR_SWIPE_UP to DeviceAction.Swipe(Direction.UP),
             Motion.AIR_SWIPE_DOWN to DeviceAction.Swipe(Direction.DOWN),

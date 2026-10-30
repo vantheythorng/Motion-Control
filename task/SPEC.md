@@ -133,7 +133,7 @@ MediaPipe Gesture Recognizer canned categories: `Closed_Fist`, `Open_Palm`, `Poi
 
 | Profile | Packages | Bindings |
 |---|---|---|
-| Short video | `com.zhiliaoapp.musically`, `com.ss.android.ugc.trill`, `com.instagram.android`, `com.google.android.youtube`, `com.facebook.katana` | AIR_SWIPE_UP → Swipe(UP) (next), AIR_SWIPE_DOWN → Swipe(DOWN) (previous), OPEN_PALM_HOLD → TapCenter (pause/play), THUMBS_UP → DoubleTapCenter (like), FIST_HOLD → TapCenter (pause/play, §12) |
+| Short video | empty (user adds apps; §12) | AIR_SWIPE_UP → Swipe(UP) (next), AIR_SWIPE_DOWN → Swipe(DOWN) (previous), OPEN_PALM_HOLD → TapCenter (pause/play), THUMBS_UP → DoubleTapCenter (like), FIST_HOLD → TapCenter (pause/play, §12) |
 | Global (fallback, disabled when `only_in_selected_apps`) | empty | AIR_SWIPE_UP → Swipe(UP), AIR_SWIPE_DOWN → Swipe(DOWN) |
 
 Note: `Swipe(UP)` means the finger moves up the screen (content scrolls to next item).
@@ -567,6 +567,7 @@ Build a debug overlay (landmarks + live dx/dy + state machine state) early in Ph
 - **D1 (bubble):** hosted in `AirScrollAccessibilityService` as `TYPE_ACCESSIBILITY_OVERLAY`; no `SYSTEM_ALERT_WINDOW`.
 - **D4 (DI):** Koin.
 - **Default bindings:** FIST_HOLD → TapCenter (play/pause), not TogglePause. A gesture that pauses gestures blocked every other gesture; pausing is done from the notification. TogglePause stays available in the profile editor, with a warning.
+- **Default profiles ship without apps** (user decision, 2026-10-30): Short video used to come with TikTok, Instagram, YouTube and Facebook assigned. Now the user adds apps (e.g. Home's "Add <app> to a profile"). Profiles already saved on a phone keep their apps.
 - **Built-in gestures Victory and Pointing up removed** (user decision, 2026-10-30): uncommon gestures are left to custom poses. MediaPipe's `Victory` and `Pointing_Up` labels are ignored; users can record such shapes as custom poses. (Fist (hold) was removed too, then restored the same day.) Stored bindings for the removed motions are dropped when profiles load (`BindingsSerializer`), so the rest of the profile is kept.
 - **Working range:** hands are only accepted within a distance range set per profile in the editor (default 30 cm – 1 m, adjustable 10 cm – 2 m), estimated from MediaPipe world landmarks and the camera focal length.
 - **D9 (Quick Settings tile):** the tile starts/stops motion control; pause stays in the notification.

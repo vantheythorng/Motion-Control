@@ -129,4 +129,3 @@ Done 2026-10-30 (`1a51faf`).
 ## Other open items
 
 - Open decisions: D2, D3, D8, and D6 until compared on device (SPEC.md §11). D1, D4, D5, D7 and D9 are decided (§12).
-- `.idea/.name` is untracked and deliberately not committed (IDE file).
