@@ -21,8 +21,34 @@ class SettingsRepository(private val dataStore: DataStore<Preferences>) {
         dataStore.edit { it[ONLY_IN_SELECTED_APPS] = only }
     }
 
+    /**
+     * Whether the floating bubble shows (default on). Home's switch, the bubble's × target and
+     * the notification's "Show bubble" action all write this one value.
+     */
+    val bubbleEnabled: Flow<Boolean> = dataStore.data.map { it[BUBBLE_ENABLED] ?: true }.distinctUntilChanged()
+
+    suspend fun setBubbleEnabled(enabled: Boolean) {
+        dataStore.edit { it[BUBBLE_ENABLED] = enabled }
+    }
+
+    /**
+     * Turns the bubble off from its × target. Returns true the first time only, when the caller
+     * shows how to turn it back on.
+     */
+    suspend fun hideBubble(): Boolean {
+        var firstTime = false
+        dataStore.edit {
+            it[BUBBLE_ENABLED] = false
+            firstTime = it[BUBBLE_HIDDEN_HINT_SHOWN] != true
+            it[BUBBLE_HIDDEN_HINT_SHOWN] = true
+        }
+        return firstTime
+    }
+
     companion object {
         private val ONLY_IN_SELECTED_APPS = booleanPreferencesKey("only_in_selected_apps")
+        private val BUBBLE_ENABLED = booleanPreferencesKey("bubble_enabled")
+        private val BUBBLE_HIDDEN_HINT_SHOWN = booleanPreferencesKey("bubble_hidden_hint_shown")
 
         fun onlyInSelectedApps(prefs: Preferences): Boolean = prefs[ONLY_IN_SELECTED_APPS] ?: true
     }

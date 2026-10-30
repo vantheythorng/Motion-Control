@@ -1,12 +1,17 @@
 package com.kwan.motioncontrol.motion
 
 import com.kwan.motioncontrol.data.AppRoute
+import com.kwan.motioncontrol.data.Motion
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-/** Runtime state of motion control, shared by [MotionService], the UI and (later) the bubble. */
+/** Runtime state of motion control, shared by [MotionService], the UI and the bubble. */
 data class MotionState(
     /** MotionService is running in the foreground. */
     val running: Boolean = false,
@@ -42,6 +47,14 @@ class MotionStateStore {
 
     fun setTestModeActive(active: Boolean) {
         _testModeActive.value = active
+    }
+
+    /** Each motion that triggered an action, so the bubble can flash. */
+    private val _fired = MutableSharedFlow<Motion>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    val fired: SharedFlow<Motion> = _fired.asSharedFlow()
+
+    fun notifyFired(motion: Motion) {
+        _fired.tryEmit(motion)
     }
 
     fun update(transform: (MotionState) -> MotionState) = _state.update(transform)

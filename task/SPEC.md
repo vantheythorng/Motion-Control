@@ -269,11 +269,18 @@ private fun buildNotification(paused: Boolean, bubbleOn: Boolean): Notification 
         .build()
 ```
 
-`ACTION_SHOW_BUBBLE` sets `bubble_enabled = true`; if the overlay permission was revoked, open the app's settings screen instead.
+`ACTION_SHOW_BUBBLE` sets `bubble_enabled = true`. (The bubble is an accessibility overlay, D1, so there is no overlay permission to check.)
 
 ### 5.5 Floating bubble + toggle setting
 
-Behavior:
+**As built (Phase 5).** The bubble is `overlay/BubbleOverlay`, owned by `AirScrollAccessibilityService` as a `TYPE_ACCESSIBILITY_OVERLAY` window (D1). There is no `FloatingHeadService`, `BubbleController` or `SYSTEM_ALERT_WINDOW`, and the overlay-permission code below doesn't apply. Differences from the plan below:
+- Colors (`BubbleLook`): grey = off, paused or camera off; blue = camera on, no hand in range; green = hand in range; amber flash (300 ms) = gesture fired.
+- Hidden while the screen is off or locked.
+- Snaps to the nearer side; the side and relative height are remembered (`bubble_position` SharedPreferences) and kept across rotation.
+- The quick panel (`overlay/QuickPanel`) is a Compose overlay window, not an activity, so the app underneath keeps playing. It has Pause/Resume, Stop, the profile in use with Edit (opens the editor in `MainActivity`), and the profile's sensitivity. Tap outside or Back closes it.
+- The toast says "Turn it back on in Motion Control", where the switch is on Home.
+
+Behavior (original plan):
 - Status colors: grey = paused or camera off, green = hand detected, brief flash = gesture fired.
 - Tap: if camera not running → launch `ArmCameraActivity`. Otherwise → open quick panel (pause/resume, active profile + edit shortcut, sensitivity slider).
 - Drag to edge snaps; drag onto "×" target sets `bubble_enabled = false` and shows a one-time toast "Bubble hidden. Turn it back on in Settings."

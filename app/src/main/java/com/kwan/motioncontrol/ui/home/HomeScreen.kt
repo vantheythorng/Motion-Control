@@ -78,6 +78,8 @@ fun HomeScreen(
     onOpenTestMode: () -> Unit,
     /** Whether the Quick Settings tile is already in the user's tiles. */
     tileAdded: Boolean,
+    bubbleEnabled: Boolean,
+    onBubbleEnabledChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -91,6 +93,7 @@ fun HomeScreen(
         AccessibilitySection(accessibilityEnabled)
         HorizontalDivider()
         MotionSection(motion, debug, route, appLabel)
+        BubbleSection(bubbleEnabled, accessibilityEnabled, onBubbleEnabledChange)
         HorizontalDivider()
         AppProfileSection(route, appLabel, profiles, onEditProfile, onAddAppToProfile)
         HorizontalDivider()
@@ -179,7 +182,7 @@ private fun MotionSection(motion: MotionState, debug: DebugFrame?, route: AppRou
     Text(
         when {
             !motion.running -> "Off"
-            motion.paused -> "Paused: gestures are ignored. Tap Resume in the notification."
+            motion.paused -> "Paused: gestures are ignored. Tap Resume in the notification or the bubble."
             route is AppRoute.Off -> cameraOffText(route.reason, appLabel)
             !motion.cameraActive -> "Waiting: camera is off (screen off or locked, or Test mode open)"
             route is AppRoute.Use -> "Active with ${route.profile.name}. Keep your hand " +
@@ -210,6 +213,25 @@ private fun MotionSection(motion: MotionState, debug: DebugFrame?, route: AppRou
                 "Frames are processed on this device and never stored or uploaded.",
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+/** The floating bubble switch; the bubble's × target and the notification change the same setting. */
+@Composable
+private fun BubbleSection(enabled: Boolean, accessibilityEnabled: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Floating bubble", style = MaterialTheme.typography.titleMedium)
+            Text(
+                when {
+                    !accessibilityEnabled -> "Appears once the accessibility service is on."
+                    enabled -> "Tap it to start motion control or open quick controls. Drag it onto × to hide it."
+                    else -> "Off."
+                },
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(checked = enabled, onCheckedChange = onChange)
     }
 }
 
@@ -361,6 +383,8 @@ fun HomeScreenPreview() {
             onOpenProfiles = {},
             onOpenTestMode = {},
             tileAdded = false,
+            bubbleEnabled = true,
+            onBubbleEnabledChange = {},
         )
     }
 }

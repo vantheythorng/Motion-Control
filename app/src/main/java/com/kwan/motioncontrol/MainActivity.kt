@@ -1,5 +1,7 @@
 package com.kwan.motioncontrol
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,8 +48,13 @@ class MainActivity : ComponentActivity() {
     private val settings: SettingsRepository by inject()
     private val installedApps: InstalledApps by inject()
 
+    /** A profile to open in the editor, asked for by the bubble's quick panel. */
+    private var editRequest by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Only for a fresh launch: after a recreation the back stack is already restored.
+        if (savedInstanceState == null) editRequest = intent.getStringExtra(EXTRA_EDIT_PROFILE)
         enableEdgeToEdge()
         setContent {
             MotionControlTheme {
@@ -57,11 +65,28 @@ class MainActivity : ComponentActivity() {
                         installedApps = installedApps,
                         store = motionStore,
                         dispatcher = dispatcher,
+                        editRequest = editRequest,
+                        onEditRequestHandled = { editRequest = null },
                         modifier = Modifier.padding(innerPadding),
                     )
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(EXTRA_EDIT_PROFILE)?.let { editRequest = it }
+    }
+
+    companion object {
+        private const val EXTRA_EDIT_PROFILE = "com.kwan.motioncontrol.extra.EDIT_PROFILE"
+
+        /** Opens the profile editor for [profileId] from outside the app, e.g. the quick panel. */
+        fun editProfileIntent(context: Context, profileId: String): Intent =
+            Intent(context, MainActivity::class.java)
+                .putExtra(EXTRA_EDIT_PROFILE, profileId)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
     }
 }
 
@@ -102,9 +127,17 @@ private fun AppContent(
     installedApps: InstalledApps,
     store: MotionStateStore,
     dispatcher: ActionDispatcher,
+    /** A profile to open in the editor, on top of Home; [onEditRequestHandled] clears it. */
+    editRequest: String?,
+    onEditRequestHandled: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var backStack by rememberSaveable(stateSaver = backStackSaver) { mutableStateOf(listOf<Screen>(Screen.Home)) }
+    LaunchedEffect(editRequest) {
+        val id = editRequest ?: return@LaunchedEffect
+        backStack = listOf(Screen.Home, Screen.ProfileEditor(id))
+        onEditRequestHandled()
+    }
     fun navigate(screen: Screen) {
         backStack = backStack + screen
     }
@@ -122,6 +155,7 @@ private fun AppContent(
     val motion by store.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val tileAdded by remember { TileStatus.added(context) }.collectAsStateWithLifecycle(initialValue = true)
+    val bubbleEnabled by settings.bubbleEnabled.collectAsStateWithLifecycle(initialValue = true)
     val debug by store.debug.collectAsStateWithLifecycle()
     // Same resolution the service uses, so Home is right even while motion control is off.
     val route = routing?.let { ProfileResolver.resolve(lastApp, connected != null, it) }
@@ -143,6 +177,8 @@ private fun AppContent(
             onOpenProfiles = { navigate(Screen.Profiles) },
             onOpenTestMode = { navigate(Screen.TestMode(null)) },
             tileAdded = tileAdded,
+            bubbleEnabled = bubbleEnabled,
+            onBubbleEnabledChange = { enabled -> scope.launch { settings.setBubbleEnabled(enabled) } },
             modifier = modifier,
         )
         Screen.Profiles -> ProfilesScreen(

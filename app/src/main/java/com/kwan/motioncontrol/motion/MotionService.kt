@@ -1,7 +1,6 @@
 package com.kwan.motioncontrol.motion
 
 import android.Manifest
-import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -15,7 +14,6 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.os.PowerManager
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -35,8 +33,10 @@ import com.kwan.motioncontrol.data.Motion
 import com.kwan.motioncontrol.data.Profile
 import com.kwan.motioncontrol.data.ProfileRepository
 import com.kwan.motioncontrol.data.ProfileResolver
+import com.kwan.motioncontrol.data.SettingsRepository
 import com.kwan.motioncontrol.data.cameraOffText
 import com.kwan.motioncontrol.system.InstalledApps
+import com.kwan.motioncontrol.system.ScreenState
 import com.kwan.motioncontrol.motion.camera.HandTracker
 import org.koin.android.ext.android.inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,12 +62,16 @@ class MotionService : LifecycleService() {
     private val dispatcher: ActionDispatcher by inject()
     private val profiles: ProfileRepository by inject()
     private val installedApps: InstalledApps by inject()
+    private val settings: SettingsRepository by inject()
 
     /** Inputs of the single camera decision (see [cameraWanted]). */
     private val running = MutableStateFlow(false)
     private val screenUsable = MutableStateFlow(false)
     private var appliedProfile: Profile? = null
     private var notificationText: String? = null
+    /** The notification offers "Show bubble" only while the bubble is off. */
+    private var bubbleEnabled = true
+    private var notificationBubbleEnabled: Boolean? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private lateinit var engine: GestureEngine
@@ -86,7 +90,7 @@ class MotionService : LifecycleService() {
         override fun onReceive(context: Context, intent: Intent) {
             // Usable only once the lock screen is gone, otherwise the camera would run (and
             // gestures fire) on the keyguard.
-            screenUsable.value = intent.action != Intent.ACTION_SCREEN_OFF && isScreenUsable()
+            screenUsable.value = intent.action != Intent.ACTION_SCREEN_OFF && ScreenState.isUsable(context)
         }
     }
 
@@ -120,7 +124,7 @@ class MotionService : LifecycleService() {
             },
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
-        screenUsable.value = isScreenUsable()
+        screenUsable.value = ScreenState.isUsable(this)
 
         // The profile follows the open app; edits apply live, without restarting the service.
         val routes = combine(
@@ -131,6 +135,12 @@ class MotionService : LifecycleService() {
             .distinctUntilChanged()
             .stateIn(lifecycleScope, SharingStarted.Eagerly, null)
         lifecycleScope.launch { routes.filterNotNull().collect(::onRoute) }
+        lifecycleScope.launch {
+            settings.bubbleEnabled.collect { enabled ->
+                bubbleEnabled = enabled
+                if (inForeground) refreshNotification()
+            }
+        }
 
         // The one place that turns the camera on and off.
         lifecycleScope.launch {
@@ -164,6 +174,9 @@ class MotionService : LifecycleService() {
             }
             ACTION_PAUSE, ACTION_RESUME -> {
                 if (inForeground) setPaused(intent.action == ACTION_PAUSE) else stopSelf()
+            }
+            ACTION_SHOW_BUBBLE -> {
+                if (inForeground) lifecycleScope.launch { settings.setBubbleEnabled(true) } else stopSelf()
             }
             // ACTION_START. Every startForegroundService() call must be answered with
             // startForeground(), even when already running.
@@ -221,10 +234,6 @@ class MotionService : LifecycleService() {
         inForeground = false
         stopSelf()
     }
-
-    private fun isScreenUsable(): Boolean =
-        getSystemService(PowerManager::class.java).isInteractive &&
-            !getSystemService(KeyguardManager::class.java).isKeyguardLocked
 
     /** Only called by the camera decision. [MotionState.cameraActive] is set once it's bound. */
     private fun startCamera() {
@@ -284,6 +293,7 @@ class MotionService : LifecycleService() {
     private fun perform(motion: Motion, action: DeviceAction) {
         if (destroyed) return
         Log.d(TAG, "$motion -> $action")
+        store.notifyFired(motion)
         when (action) {
             DeviceAction.TogglePause -> setPaused(!store.state.value.paused)
             else -> if (!dispatcher.dispatch(action)) {
@@ -307,7 +317,7 @@ class MotionService : LifecycleService() {
     private fun refreshNotification() {
         val paused = store.state.value.paused
         val text = notificationText(paused)
-        if (text == notificationText) return
+        if (text == notificationText && bubbleEnabled == notificationBubbleEnabled) return
         getSystemService(NotificationManager::class.java)
             .notify(NOTIFICATION_ID, buildNotification(paused))
     }
@@ -347,6 +357,10 @@ class MotionService : LifecycleService() {
                 servicePendingIntent(if (paused) ACTION_RESUME else ACTION_PAUSE),
             )
             .addAction(0, "Stop", servicePendingIntent(ACTION_STOP))
+            .apply {
+                notificationBubbleEnabled = bubbleEnabled
+                if (!bubbleEnabled) addAction(0, "Show bubble", servicePendingIntent(ACTION_SHOW_BUBBLE))
+            }
             .build()
 
     private fun servicePendingIntent(action: String): PendingIntent = PendingIntent.getService(
@@ -370,6 +384,7 @@ class MotionService : LifecycleService() {
         private const val ACTION_STOP = "com.kwan.motioncontrol.action.STOP"
         private const val ACTION_PAUSE = "com.kwan.motioncontrol.action.PAUSE"
         private const val ACTION_RESUME = "com.kwan.motioncontrol.action.RESUME"
+        private const val ACTION_SHOW_BUBBLE = "com.kwan.motioncontrol.action.SHOW_BUBBLE"
 
         /** Call only while our UI is visible. */
         fun start(context: Context) = ContextCompat.startForegroundService(
@@ -378,6 +393,14 @@ class MotionService : LifecycleService() {
 
         fun stop(context: Context) {
             context.startService(Intent(context, MotionService::class.java).setAction(ACTION_STOP))
+        }
+
+        fun pause(context: Context) {
+            context.startService(Intent(context, MotionService::class.java).setAction(ACTION_PAUSE))
+        }
+
+        fun resume(context: Context) {
+            context.startService(Intent(context, MotionService::class.java).setAction(ACTION_RESUME))
         }
     }
 }

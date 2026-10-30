@@ -3,6 +3,7 @@ package com.kwan.motioncontrol.accessibility
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.content.Intent
+import android.content.res.Configuration
 import android.graphics.Path
 import android.os.Build
 import android.util.DisplayMetrics
@@ -11,16 +12,34 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
 import com.kwan.motioncontrol.data.Direction
+import com.kwan.motioncontrol.data.ProfileRepository
+import com.kwan.motioncontrol.data.SettingsRepository
+import com.kwan.motioncontrol.motion.MotionStateStore
+import com.kwan.motioncontrol.overlay.BubbleOverlay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.koin.android.ext.android.inject
 
 class AirScrollAccessibilityService : AccessibilityService() {
+
+    private val store: MotionStateStore by inject()
+    private val settings: SettingsRepository by inject()
+    private val profiles: ProfileRepository by inject()
+
+    /** The floating bubble lives here (D1), so it needs no overlay permission. */
+    private var bubble: BubbleOverlay? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         _instance.value = this
+        bubble = BubbleOverlay(this, store, settings, profiles).also { it.start() }
         Log.d(TAG, "Accessibility service connected")
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        bubble?.onConfigurationChanged()
     }
 
     // Only clear the reference if it still points at this instance, in case a new instance was
@@ -37,6 +56,8 @@ class AirScrollAccessibilityService : AccessibilityService() {
     }
 
     private fun disconnect() {
+        bubble?.stop()
+        bubble = null
         if (_instance.compareAndSet(this, null)) ForegroundAppTracker.clear()
     }
 
