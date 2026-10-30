@@ -9,8 +9,8 @@ Status of the build phases in [SPEC.md](SPEC.md) §10. Update this file when a p
 | 3 | Profiles, profile editor, Test mode | Done | `c149211` |
 | 4 | Per-app profiles, camera released in other apps | Done | `03051e7` |
 | 5 | Floating bubble, quick panel, bubble toggle | Done | `fdcfbbb` |
-| 6 | OEM guides, battery tuning | Built; 30-min test pending | `d8e6d8f` |
-| 7 | Custom poses | Built, checked on device; D6 open | `98351b7` |
+| 6 | OEM guides, battery tuning | Done | `d8e6d8f` |
+| 7 | Custom poses | Done; D6 choice pending | `98351b7` |
 | 8 | Quick Settings tile | Done | `1a51faf` |
 
 Phases 1–4 were built before this file existed; their device checks weren't recorded.
@@ -74,7 +74,7 @@ Checklist:
 
 ## Phase 6: Reliability and battery
 
-Built 2026-10-30: Troubleshooting, battery exemption and onboarding. Unit tests, build and lint pass; checked on device. Only the 30-minute test below is left.
+Done 2026-10-30: Troubleshooting, battery exemption and onboarding. Unit tests, build and lint pass; checked on device, including the 30-minute test.
 
 **Not publishing on the Play Store** (user decision, 2026-10-30): the app is installed directly (APK). Play-only work (privacy policy, Play Console Permissions Declaration, SPEC §9) is out of scope. Revisit only if that changes.
 
@@ -93,11 +93,11 @@ To do:
 - [x] Onboarding (§7): welcome, then camera → notifications → accessibility (doubles as the disclosure) → battery, one at a time with a reason; set-up steps are skipped, every step can be skipped (`onboarding_done`)
 - [x] Android 13+ "restricted settings" hint (accessibility switch greyed out for apps installed from a file) in onboarding and Troubleshooting
 - [x] Device check: onboarding on a fresh install (clear data), including the restricted-settings path
-- [ ] Done when (SPEC §10): 30 min of continuous use without false triggers, the service being killed, or overheating, on at least one Oppo, Vivo or Xiaomi phone
+- [x] Done when (SPEC §10): 30 min of continuous use without false triggers, the service being killed, or overheating, on at least one Oppo, Vivo or Xiaomi phone
 
 ## Phase 7: Custom poses
 
-Built 2026-10-30; unit tests, build and lint pass; checked on device. Still open: the D6 choice (2D or 3D matching) and confirming the "done when" check below. What was built is in SPEC.md §5.7 ("As built").
+Done 2026-10-30; unit tests, build and lint pass; checked on device, including the "done when" check. Still open: the D6 choice (2D or 3D matching). What was built is in SPEC.md §5.7 ("As built").
 
 Decisions (SPEC §12):
 - [x] D5: shared pose library; each profile binds poses to actions
@@ -114,8 +114,8 @@ Checklist:
 - [x] Profile editor lists only the poses the profile uses, with "Add a saved pose" to add one and "Remove" to take one out (the pose stays saved)
 - [x] Custom poses in Test mode (nearest pose with distance and threshold) and motion control
 - [x] Deleting a pose removes its bindings from every profile
-- [ ] Device check / tuning: thresholds and margin (`PoseMatcher`), steadiness while recording (`PoseRecorder.STEADY`)
-- [ ] Done when (SPEC §10): a new pose (e.g. 🤟) is recorded in under 30 s, bound to an action, and fires in TikTok without restarting motion control; in 2 minutes of normal hand movement and built-in poses it never fires by mistake
+- [x] Device check / tuning: thresholds and margin (`PoseMatcher`), steadiness while recording (`PoseRecorder.STEADY`)
+- [x] Done when (SPEC §10): a new pose (e.g. 🤟) is recorded in under 30 s, bound to an action, and fires in TikTok without restarting motion control; in 2 minutes of normal hand movement and built-in poses it never fires by mistake
 
 ## Phase 8: Quick Settings tile
 
